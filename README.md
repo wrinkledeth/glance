@@ -42,7 +42,9 @@ cp .env.example .env
 ```bash
 # Summarize an X post
 uv run glance "https://x.com/MilkRoadAI/status/2033929705028517963"
+```
 
+```md
 Fetching twitter content...
 Summarizing...
 **Key Points:**
