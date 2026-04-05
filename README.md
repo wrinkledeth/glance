@@ -6,7 +6,7 @@ Summarize YouTube videos, Reddit threads, and X posts — without handing your a
 
 Paste a URL → glance fetches content headlessly → Claude summarizes it → printed to your terminal.
 
-No browser tab. No autoplay. No "recommended for you." Just the info you asked for.
+No browser tab. No autoplay. No "recommended for you." Just the content you asked for.
 
 - **YouTube** — transcript via `yt-dlp`
 - **Reddit** — thread via JSON API  
