@@ -1,12 +1,12 @@
 # glance
 
-Summarize YouTube videos, Reddit threads, and X posts — without exposing yourself to the algorithm.
+CLI tool to summarize YouTube videos, Reddit threads, and X posts — without exposing yourself to the algorithm.
 
 No browser tab. No autoplay. No "For You." Just the content you asked for :)
 
 ## How it works
 
-Paste a URL → glance fetches content headlessly → Claude summarizes it → printed to your terminal.
+Paste a URL → glance fetches content headlessly → Claude summarizes and prints to the terminal.
 
 - **YouTube** — transcript via `yt-dlp`
 - **Reddit** — thread via JSON API  
