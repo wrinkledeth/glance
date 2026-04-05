@@ -2,7 +2,7 @@
 
 Summarize YouTube videos, Reddit threads, and X posts — without exposing yourself to the algorithm.
 
-No browser tab. No autoplay. No "recommended for you." Just the content you asked for.
+No browser tab / autoplay / "for you." Just the content you asked for.
 
 ## How it works
 
