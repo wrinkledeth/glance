@@ -12,6 +12,8 @@ def summarize(content: str, source_type: str) -> str:
         system = "You summarize YouTube video transcripts. Give a clear, concise summary of the key points. Use bullet points for the main ideas. Keep it under 300 words."
     elif source_type == "reddit":
         system = "You summarize Reddit threads. Summarize the post and the general sentiment/key points from the comments. Use bullet points. Keep it under 300 words."
+    elif source_type == "twitter":
+        system = "You summarize tweets and Twitter/X threads. Give a clear, concise summary of the key points and any notable context. Use bullet points. Keep it under 200 words."
     else:
         system = "Summarize the following content concisely using bullet points."
 

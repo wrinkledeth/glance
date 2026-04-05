@@ -16,6 +16,8 @@ def detect_source(url: str) -> str:
         return "youtube"
     elif "reddit.com" in host or "redd.it" in host:
         return "reddit"
+    elif any(h in host for h in ("twitter.com", "x.com")):
+        return "twitter"
     else:
         return "unknown"
 
@@ -32,7 +34,7 @@ def main():
 
     if source == "unknown":
         print(f"Error: unsupported URL: {args.url}", file=sys.stderr)
-        print("Supported: YouTube, Reddit", file=sys.stderr)
+        print("Supported: YouTube, Reddit, Twitter/X", file=sys.stderr)
         sys.exit(1)
 
     print(f"Fetching {source} content...", file=sys.stderr)
@@ -43,6 +45,9 @@ def main():
     elif source == "reddit":
         from glance.reddit import fetch_thread
         content = fetch_thread(args.url)
+    elif source == "twitter":
+        from glance.twitter import fetch_tweet
+        content = fetch_tweet(args.url)
 
     print("Summarizing...", file=sys.stderr)
     result = summarize(content, source)
