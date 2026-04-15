@@ -37,20 +37,24 @@ def main():
         print("Supported: YouTube, Reddit, Twitter/X", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Fetching {source} content...", file=sys.stderr)
+    try:
+        print(f"Fetching {source} content...", file=sys.stderr)
 
-    if source == "youtube":
-        from glance.youtube import extract_transcript
-        content = extract_transcript(args.url)
-    elif source == "reddit":
-        from glance.reddit import fetch_thread
-        content = fetch_thread(args.url)
-    elif source == "twitter":
-        from glance.twitter import fetch_tweet
-        content = fetch_tweet(args.url)
+        if source == "youtube":
+            from glance.youtube import extract_transcript
+            content = extract_transcript(args.url)
+        elif source == "reddit":
+            from glance.reddit import fetch_thread
+            content = fetch_thread(args.url)
+        elif source == "twitter":
+            from glance.twitter import fetch_tweet
+            content = fetch_tweet(args.url)
 
-    print("Summarizing...", file=sys.stderr)
-    result = summarize(content, source)
+        print("Summarizing...", file=sys.stderr)
+        result = summarize(content, source)
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     width = shutil.get_terminal_size().columns
     for line in result.splitlines():
         if line.strip():
