@@ -1,10 +1,11 @@
+import base64
 import json
 import os
 import traceback
 from typing import Iterator
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from glance.cli import detect_source
@@ -12,6 +13,90 @@ from glance.summarize import ANTHROPIC_MODEL, _stream_anthropic, _stream_ollama,
 
 
 app = FastAPI(title="glance")
+
+ICON_HEADERS = {"Cache-Control": "public, max-age=86400"}
+
+FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<rect width="64" height="64" rx="14" fill="#0b0b0d"/>
+<path d="M10 33c5.5-9 13-14 22-14s16.5 5 22 14c-5.5 8-13 12-22 12s-16.5-4-22-12Z" fill="none" stroke="#c9c9cf" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="32" cy="32" r="8" fill="#4a8cff"/>
+<circle cx="32" cy="32" r="3.5" fill="#090d16"/>
+<circle cx="29.5" cy="29" r="1.8" fill="#e6eeff"/>
+</svg>
+"""
+
+APPLE_TOUCH_ICON_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAAIc0lEQVR42u2d/2tV"
+    "ZRzH92uIQ6epIZrMIjE1C0lJhBRd08HUFZP8klP8QjQhB2u6/M7UVqINpqAJKaFQ"
+    "yVCQjSWZQcYksP6A8MegX/qtn5/2Xt6pY/fe55577nOe55zXDy8Y2+7dOZ/Pa5/z"
+    "fL9VEyZMNABpoYogAEIDIDQAQgMgNCA0AEIDIDQAQgMgNCA0AEIDIDQAQgMgNCA0"
+    "AEIDIDQAQgMgNCA0AEIDIDQAQgMgNCA0AEIDIDQAQgMgNCA0AEIDIDQAQgMgNCA0"
+    "AEIDIDQAQgNCEwhAaACEBkBoAIQGhAZAaACEBkBoAIQGhIZYWLDgNdPeftAMDt41"
+    "Dx78PoK+1vf0M2KE0F5TUzPV1NWtNZ2dR01f3+1RifOh39Hv6jV6LTFEaC+qcEvL"
+    "LtPbe9EMDT0sKnE+9Fq9h96L6o3Q3lbhqFC9Edr7Kkz1RuhUV2GqN0KntgpTvRE6"
+    "1VWY6o3QXlbhnGANDY0juPwHymr1rqIKu5coyX+utFfv1Am9fv27ZmDgx2Ae80k1"
+    "fxQjxQqhPWbjxveCf5S7rt6KGUJ7yIwZM829e7+m6nHtonorZoodQntGT8+F1Heo"
+    "KlW9FTuE9oiOjk8z12mKu3orhgjtAdu2tTCsFVP1ViwROkFWrapj6Crm6q2YInQC"
+    "zJv3qrlz52erJJ082Z3pqWHde1dXt1WsFFPFFqEdUl09yVy9et0qQXv3fsQah8co"
+    "FjYxU2wVY4R2xOnTX1gl5vjxU4g8BsXEJnaKMUI7oLX1Y6uEXL58NdHrnD53uZmz"
+    "dLt5ZfUBM7+hawR9re/pZ0lem2JjE0PFGqErSFNTs1Ui+vvvmLlzX3Z6bRMnTTMv"
+    "rWg1S3f3m/rT/5p1Z0xB9Dv6Xb1Gr3V5rYqNYmQTS8UcoSvAsmXLrXvqK1a87ey6"
+    "Jk+rNQs39lhJXEhuvYfey9V1K0a28VTsETpGZs+eY27e7LcK/qZNW5xdl5oQ5Yg8"
+    "nth6T1fXr1jZxFSxVw4QOiYuXPjKKvBtbZ84q8pqLsQl8lj03q6qtWJmE1vlAKFj"
+    "4NChY1YBP3PmS2edvZUH/6yYzDn0N1x1HhU7mxgrFwhdBjt37rEK9PXr35spU553"
+    "IvPqY39XXOYc+lsupFbsFEObWCsnCB2B+voG6+WPCxcudtLMcFGZx6vULpofiqHt"
+    "8lvlBqEDD26xNnPbNWN6f/gffR13mzqLRSQVQvv4+NPIQz7ZmnqMGfjDmL/+eRZ9"
+    "Tz+LS2pXox++NfOCF9q3Dooe94WG5saT+Wmp4xzSczXy4VtHPFihfRxC0oRHoWZG"
+    "PplztJz4ycxvPDvCG9u+NSs7H0WWWteS1aHS4IT2cZBfU9KFqrPay8WE3t/RZZ6b"
+    "OO0ZZi5uNm+1/hKpSruaJvd1MisIoX2dhtU6i0KCRRU6h6p2qVLrmrK+3MBroX1e"
+    "KGMzslFM6FXvNOUVOorUrkY8QlgQ5qXQPi9ltFmnUahT+M13gwVlzlFK80PXxJJd"
+    "T4X2ebG5ZuhsBMs3bCeZp86otRJabepSqnQS66lD2VSRmNC+bwfSQnzr2bzORyNN"
+    "C7WXRbFmxniUMvqha2Pbm0dC79nzofcbNgtNpoxFw3GlCjwWvYdvkyzlbExWjjMh"
+    "tA4IDGFLvbZM2Qqmjl25QpfSOdS1hXB0RBKHQToX2vZk0KQPPUHo8g/3Ua5TL7RN"
+    "IE6d+jzx3jJNjsIoRza5ROhhbt0aSPywk1I7heUK7XuncGxbWjlC6BKaHDdu3DK1"
+    "tckN1NsO2+XQ0FtUmUMYtsuhnCg3NDkidAq1RHHWrBeT22RQwgZYTY5EFdr3iZUc"
+    "yoXt0t7MdArFli0fWAflypVrZvr0FxJJYKkbYaN0Dn2f+h59Yg3nQLmwzZtynKmJ"
+    "lTVr6q2Dc+nS12by5CnOr7HY4qRypfZ9cdLomvDh2CsHtvlSbjM59b1uXaN1kM6f"
+    "vzT8mmrnpyFFOXdDTYhCbeoQlo8+oXok9rZ5Uk4zvThpwwb7D/o5d67X/f7GAgv8"
+    "bUY/NBwX4gL/HIq5bX6US9ZDD9Pc/L510Lq7z7p93BbZguUKl1uwcijWtnlRDlkP"
+    "/RRbt263Dl5X12feTrJUCteTKYqxbT6UO3asjMOOHbutg3jkyAmvRzxCPMYgh2Jr"
+    "mwfljD2FMSwrFQcOHHLa9EjzQTM5FFPb+Pv46QheHjSzb99+66C2tXU4nT1M41Fg"
+    "T3bdd1jHXTnioJkUBDeNhzX6XERSdVijr4+/NB2n63MzL5XH6frcQQn9wHPfO+Kp"
+    "PfDc5yGkUD+Swveh0lQLHcIgf0gfGuT7ZFYmhA5tGtbnj3XzfblBZoQObaGMj/i"
+    "+ICxjQoe1lNE3Qliymzmhoyw2P3z4eOY/vF4xCGFTRSaFjrIdSPT13TadnUdNXd1"
+    "aU1MzNbUC6950j7pX3XMpMUp621tmhS51w+ZYhoYemt7ei6alZVcqqrfuQfeie9K"
+    "9RYlJ0huTMy90qVvq01S9y6nCvh4dgdCPWbTodevjEUKu3nFU4XzHDSiGaXChKi3"
+    "txiVL3jT37/8WW5J9qN5xV+HxUMwUu7R4UJWmzlAps1++Vu9KVeH8s6qbU9Uhrkp"
+    "bD1+Hm8TZ/Kh09XZRhfM1M5I4CAahPX5cR63erqtwloYsUyu0TxI1NDSO4OM/F0J"
+    "Tvb0lK1UYoT2s3lRhhKZ6U4UROvTqTRVG6OCrN1UYoYOu3lRhhA6+elOFETq46t3"
+    "eftAMDt4dlVhf63tUYYQGQGhAaACEBkBoAIQGQGhAaACEBkBoAIQGQGhAaACEBk"
+    "BoAIQGQGhAaACEBkBoAIQGQGhAaACEBkBoAIQGQGhAaACEBkBoAIQGhAZAaACEBk"
+    "BoAIQGhAZAaACEBkBoAIQGhAZAaACEBkBoAIQGhAZAaACEBkBogPH4D5W6MA4qD2"
+    "lNAAAAAElFTkSuQmCC"
+)
+
+WEB_MANIFEST = {
+    "name": "glance",
+    "short_name": "glance",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0b0b0d",
+    "theme_color": "#0b0b0d",
+    "icons": [
+        {
+            "src": "/favicon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any",
+        },
+        {
+            "src": "/apple-touch-icon.png",
+            "sizes": "180x180",
+            "type": "image/png",
+            "purpose": "any maskable",
+        },
+    ],
+}
 
 
 INDEX_HTML = """<!doctype html>
@@ -23,6 +108,9 @@ INDEX_HTML = """<!doctype html>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="glance">
 <meta name="theme-color" content="#0b0b0d">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
 <title>glance</title>
 <style>
   :root { color-scheme: dark; }
@@ -189,6 +277,25 @@ INDEX_HTML = """<!doctype html>
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:
     return HTMLResponse(INDEX_HTML)
+
+
+@app.get("/favicon.svg")
+def favicon() -> Response:
+    return Response(FAVICON_SVG, media_type="image/svg+xml", headers=ICON_HEADERS)
+
+
+@app.get("/apple-touch-icon.png")
+def apple_touch_icon() -> Response:
+    return Response(APPLE_TOUCH_ICON_PNG, media_type="image/png", headers=ICON_HEADERS)
+
+
+@app.get("/site.webmanifest")
+def site_webmanifest() -> Response:
+    return Response(
+        json.dumps(WEB_MANIFEST),
+        media_type="application/manifest+json",
+        headers=ICON_HEADERS,
+    )
 
 
 @app.get("/healthz")
