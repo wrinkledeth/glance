@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from typing import Iterator
 
 from dotenv import load_dotenv
 import anthropic
@@ -21,24 +22,32 @@ def _system_prompt(source_type: str) -> str:
     return "Summarize the following content concisely using bullet points."
 
 
-def _summarize_anthropic(content: str, system: str) -> str:
+def _stream_anthropic(content: str, system: str) -> Iterator[str]:
     print(f"→ anthropic / {ANTHROPIC_MODEL}", file=sys.stderr, flush=True)
     client = anthropic.Anthropic()
-    message = client.messages.create(
+    with client.messages.stream(
         model=ANTHROPIC_MODEL,
         max_tokens=1024,
         system=system,
         messages=[{"role": "user", "content": content}],
-    )
-    return message.content[0].text
+    ) as stream:
+        for text in stream.text_stream:
+            yield text
 
 
-def _summarize_ollama(content: str, system: str) -> str:
+def _parse_keep_alive(raw: str) -> int | str:
+    try:
+        return int(raw)
+    except ValueError:
+        return raw
+
+
+def _stream_ollama(content: str, system: str) -> Iterator[str]:
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     model = os.getenv("OLLAMA_MODEL", "qwen3.5:35B-A3B")
+    keep_alive = _parse_keep_alive(os.getenv("GLANCE_OLLAMA_KEEP_ALIVE", "0"))
     print(f"→ ollama / {model}", file=sys.stderr, flush=True)
 
-    parts: list[str] = []
     with httpx.stream(
         "POST",
         f"{host.rstrip('/')}/api/chat",
@@ -50,6 +59,7 @@ def _summarize_ollama(content: str, system: str) -> str:
             ],
             "stream": True,
             "think": False,
+            "keep_alive": keep_alive,
         },
         timeout=120.0,
     ) as resp:
@@ -60,26 +70,37 @@ def _summarize_ollama(content: str, system: str) -> str:
             obj = json.loads(line)
             chunk = obj.get("message", {}).get("content", "")
             if chunk:
-                parts.append(chunk)
-                sys.stderr.write(chunk)
-                sys.stderr.flush()
+                yield chunk
             if obj.get("done"):
                 break
 
-    sys.stderr.write("\n")
-    sys.stderr.flush()
-    return "".join(parts)
 
-
-def summarize(content: str, source_type: str, provider: str | None = None) -> str:
-    """Summarize content using the configured LLM provider."""
+def summarize_stream(content: str, source_type: str, provider: str | None = None) -> Iterator[str]:
+    """Stream summary chunks from the configured LLM provider."""
     if provider is None:
         provider = os.getenv("LLM_PROVIDER", "anthropic")
 
     system = _system_prompt(source_type)
 
     if provider == "anthropic":
-        return _summarize_anthropic(content, system)
+        return _stream_anthropic(content, system)
     if provider == "ollama":
-        return _summarize_ollama(content, system)
+        return _stream_ollama(content, system)
     raise ValueError(f"Unknown LLM provider: {provider!r} (expected 'anthropic' or 'ollama')")
+
+
+def summarize(content: str, source_type: str, provider: str | None = None) -> str:
+    """Summarize content using the configured LLM provider."""
+    resolved = provider or os.getenv("LLM_PROVIDER", "anthropic")
+    echo = resolved == "ollama"
+
+    parts: list[str] = []
+    for chunk in summarize_stream(content, source_type, provider):
+        parts.append(chunk)
+        if echo:
+            sys.stderr.write(chunk)
+            sys.stderr.flush()
+    if echo:
+        sys.stderr.write("\n")
+        sys.stderr.flush()
+    return "".join(parts)

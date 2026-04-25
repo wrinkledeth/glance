@@ -1,0 +1,19 @@
+[Unit]
+Description=glance web (tailnet-only summarizer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=zen
+WorkingDirectory=/home/zen/dev/glance
+# Set GLANCE_HOST to your Tailscale IP (e.g. 100.x.y.z) to bind only on the
+# tailnet. Use 0.0.0.0 only if your host firewall already restricts to it.
+Environment=GLANCE_HOST=0.0.0.0
+Environment=GLANCE_PORT=8765
+ExecStart=/home/zen/.local/bin/uv run glance-web
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
