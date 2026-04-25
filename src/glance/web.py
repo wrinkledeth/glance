@@ -3,11 +3,12 @@ import os
 import traceback
 from typing import Iterator
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
+from pydantic import BaseModel
 
 from glance.cli import detect_source
-from glance.summarize import summarize_stream
+from glance.summarize import _stream_anthropic, _stream_ollama, summarize_stream
 
 
 app = FastAPI(title="glance")
@@ -160,6 +161,43 @@ def summarize_endpoint(
     return StreamingResponse(
         _summarize_events(url, provider),
         media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+class LLMRequest(BaseModel):
+    content: str
+    system: str | None = None
+    source_type: str | None = None
+
+
+def _llm_events(req: LLMRequest) -> Iterator[str]:
+    try:
+        if req.system:
+            provider = os.getenv("LLM_PROVIDER", "anthropic")
+            if provider == "anthropic":
+                stream = _stream_anthropic(req.content, req.system)
+            elif provider == "ollama":
+                stream = _stream_ollama(req.content, req.system)
+            else:
+                raise RuntimeError(f"unsupported remote LLM_PROVIDER: {provider!r}")
+        else:
+            stream = summarize_stream(req.content, req.source_type)
+        for chunk in stream:
+            yield json.dumps({"chunk": chunk}) + "\n"
+        yield json.dumps({"done": True}) + "\n"
+    except Exception as exc:
+        traceback.print_exc()
+        yield json.dumps({"error": str(exc) or exc.__class__.__name__}) + "\n"
+
+
+@app.post("/llm")
+def llm_endpoint(req: LLMRequest) -> StreamingResponse:
+    if not req.system and not req.source_type:
+        raise HTTPException(400, "must provide 'system' or 'source_type'")
+    return StreamingResponse(
+        _llm_events(req),
+        media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 

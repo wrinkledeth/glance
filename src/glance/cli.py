@@ -30,7 +30,7 @@ def main():
     parser.add_argument("url", help="YouTube or Reddit URL to summarize")
     parser.add_argument(
         "--provider",
-        choices=["anthropic", "ollama"],
+        choices=["anthropic", "ollama", "web"],
         default=None,
         help="LLM provider to use (overrides LLM_PROVIDER env var)",
     )

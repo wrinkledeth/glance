@@ -29,6 +29,7 @@ Configure in `.env` or override per-call with `--provider {anthropic,ollama}`.
 
 - **Anthropic** (default): set `ANTHROPIC_API_KEY` and `LLM_PROVIDER=anthropic`.
 - **Ollama** (local): set `LLM_PROVIDER=ollama`, make sure `ollama serve` is running, and pull a model (e.g. `ollama pull qwen3.5:35B-A3B`). Tune `OLLAMA_HOST` and `OLLAMA_MODEL` as needed. Tokens stream live to stderr while the local model runs.
+- **Web** (remote): set `LLM_PROVIDER=web` and `GLANCE_WEB_URL=http://<host>:8765` to delegate the LLM call to a remote glance-web instance over the network (e.g. a GPU box on your tailnet). The remote machine's own `LLM_PROVIDER` decides whether it answers via Anthropic or Ollama — invisible to the caller. Glance posts pre-fetched content to `POST /llm`, so the remote doesn't re-fetch the source URL.
 
 ## Usage
 ```bash

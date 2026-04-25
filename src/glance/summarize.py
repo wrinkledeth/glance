@@ -75,6 +75,32 @@ def _stream_ollama(content: str, system: str) -> Iterator[str]:
                 break
 
 
+def _stream_web(content: str, system: str) -> Iterator[str]:
+    base = os.getenv("GLANCE_WEB_URL")
+    if not base:
+        raise RuntimeError("GLANCE_WEB_URL not set (e.g. http://moodylotus:8765)")
+    print(f"→ web / {base}", file=sys.stderr, flush=True)
+
+    with httpx.stream(
+        "POST",
+        f"{base.rstrip('/')}/llm",
+        json={"content": content, "system": system},
+        timeout=120.0,
+    ) as resp:
+        resp.raise_for_status()
+        for line in resp.iter_lines():
+            if not line:
+                continue
+            obj = json.loads(line)
+            if "error" in obj:
+                raise RuntimeError(obj["error"])
+            chunk = obj.get("chunk", "")
+            if chunk:
+                yield chunk
+            if obj.get("done"):
+                break
+
+
 def summarize_stream(content: str, source_type: str, provider: str | None = None) -> Iterator[str]:
     """Stream summary chunks from the configured LLM provider."""
     if provider is None:
@@ -86,13 +112,15 @@ def summarize_stream(content: str, source_type: str, provider: str | None = None
         return _stream_anthropic(content, system)
     if provider == "ollama":
         return _stream_ollama(content, system)
-    raise ValueError(f"Unknown LLM provider: {provider!r} (expected 'anthropic' or 'ollama')")
+    if provider == "web":
+        return _stream_web(content, system)
+    raise ValueError(f"Unknown LLM provider: {provider!r} (expected 'anthropic', 'ollama', or 'web')")
 
 
 def summarize(content: str, source_type: str, provider: str | None = None) -> str:
     """Summarize content using the configured LLM provider."""
     resolved = provider or os.getenv("LLM_PROVIDER", "anthropic")
-    echo = resolved == "ollama"
+    echo = resolved in {"ollama", "web"}
 
     parts: list[str] = []
     for chunk in summarize_stream(content, source_type, provider):
