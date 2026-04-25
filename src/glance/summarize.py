@@ -94,6 +94,14 @@ def _stream_web(content: str, system: str) -> Iterator[str]:
             obj = json.loads(line)
             if "error" in obj:
                 raise RuntimeError(obj["error"])
+            if "meta" in obj:
+                meta = obj["meta"]
+                print(
+                    f"  ↳ remote: {meta.get('provider', '?')} / {meta.get('model', '?')}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                continue
             chunk = obj.get("chunk", "")
             if chunk:
                 yield chunk

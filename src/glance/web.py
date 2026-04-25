@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from glance.cli import detect_source
-from glance.summarize import _stream_anthropic, _stream_ollama, summarize_stream
+from glance.summarize import ANTHROPIC_MODEL, _stream_anthropic, _stream_ollama, summarize_stream
 
 
 app = FastAPI(title="glance")
@@ -171,10 +171,21 @@ class LLMRequest(BaseModel):
     source_type: str | None = None
 
 
+def _resolve_provider_model() -> tuple[str, str]:
+    provider = os.getenv("LLM_PROVIDER", "anthropic")
+    if provider == "anthropic":
+        return provider, ANTHROPIC_MODEL
+    if provider == "ollama":
+        return provider, os.getenv("OLLAMA_MODEL", "qwen3.5:35B-A3B")
+    return provider, "?"
+
+
 def _llm_events(req: LLMRequest) -> Iterator[str]:
     try:
+        provider, model = _resolve_provider_model()
+        yield json.dumps({"meta": {"provider": provider, "model": model}}) + "\n"
+
         if req.system:
-            provider = os.getenv("LLM_PROVIDER", "anthropic")
             if provider == "anthropic":
                 stream = _stream_anthropic(req.content, req.system)
             elif provider == "ollama":
