@@ -8,7 +8,7 @@ from glance.summarize import summarize
 
 
 def detect_source(url: str) -> str:
-    """Detect whether a URL is YouTube, Reddit, or unknown."""
+    """Detect the source type from a URL. Falls back to generic article."""
     parsed = urlparse(url)
     host = parsed.hostname or ""
 
@@ -18,16 +18,18 @@ def detect_source(url: str) -> str:
         return "reddit"
     elif any(h in host for h in ("twitter.com", "x.com")):
         return "twitter"
+    elif "news.ycombinator.com" in host:
+        return "hn"
     else:
-        return "unknown"
+        return "article"
 
 
 def main():
     parser = argparse.ArgumentParser(
         prog="glance",
-        description="Get LLM summaries of YouTube videos and Reddit threads",
+        description="Get LLM summaries of YouTube videos, Reddit/HN threads, tweets, and articles",
     )
-    parser.add_argument("url", help="YouTube or Reddit URL to summarize")
+    parser.add_argument("url", help="URL to summarize (YouTube, Reddit, X, Hacker News, or any article)")
     parser.add_argument(
         "--provider",
         choices=["anthropic", "ollama", "web"],
@@ -37,11 +39,6 @@ def main():
     args = parser.parse_args()
 
     source = detect_source(args.url)
-
-    if source == "unknown":
-        print(f"Error: unsupported URL: {args.url}", file=sys.stderr)
-        print("Supported: YouTube, Reddit, Twitter/X", file=sys.stderr)
-        sys.exit(1)
 
     try:
         print(f"Fetching {source} content...", file=sys.stderr)
@@ -55,6 +52,12 @@ def main():
         elif source == "twitter":
             from glance.twitter import fetch_tweet
             content = fetch_tweet(args.url)
+        elif source == "hn":
+            from glance.hn import fetch_hn
+            content = fetch_hn(args.url)
+        elif source == "article":
+            from glance.article import fetch_article
+            content = fetch_article(args.url)
 
         result = summarize(content, source, provider=args.provider)
     except Exception as exc:

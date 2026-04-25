@@ -66,7 +66,7 @@ INDEX_HTML = """<!doctype html>
   <h1>glance</h1>
   <form id="f">
     <input id="u" type="url" inputmode="url" autocapitalize="off" autocorrect="off"
-           spellcheck="false" placeholder="paste a YouTube / Reddit / X URL" required>
+           spellcheck="false" placeholder="paste a YouTube / Reddit / X / HN / article URL" required>
     <button id="go" type="submit">Go</button>
   </form>
   <div id="status"></div>
@@ -132,14 +132,17 @@ def _fetch_content(source: str, url: str) -> str:
     if source == "twitter":
         from glance.twitter import fetch_tweet
         return fetch_tweet(url)
+    if source == "hn":
+        from glance.hn import fetch_hn
+        return fetch_hn(url)
+    if source == "article":
+        from glance.article import fetch_article
+        return fetch_article(url)
     raise ValueError(f"unsupported source: {source}")
 
 
 def _summarize_events(url: str, provider: str | None) -> Iterator[str]:
     source = detect_source(url)
-    if source == "unknown":
-        yield _sse("error", "unsupported URL (YouTube, Reddit, Twitter/X only)")
-        return
 
     try:
         yield _sse("status", f"fetching {source}…")

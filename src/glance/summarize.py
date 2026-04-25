@@ -41,6 +41,31 @@ def _system_prompt(source_type: str) -> str:
             "notable context (who is speaking, what they're responding to), and the "
             "tone. Keep the bullets under 200 words total."
         )
+    if source_type == "article":
+        return header + (
+            "You summarize articles (blog posts, news, essays). Capture the thesis, "
+            "then the supporting points or evidence. Note the author's stance if "
+            "it's an opinion piece. Skip nav/footer noise. Keep the bullets under "
+            "300 words total."
+        )
+    if source_type == "hn":
+        return (
+            f"Today's date is {today}. Use it to flag content that is stale, "
+            "time-sensitive, or references events relative to now.\n\n"
+            "You summarize Hacker News submissions. The input has an "
+            "`=== Article ===` section (the linked piece, if any) and a "
+            "`=== Discussion ===` section (top comments in HN's display order). "
+            "Format your response as:\n"
+            "1. A single-line **TL;DR:** (one sentence covering both article and discussion).\n"
+            "2. A blank line.\n"
+            "3. **Article** subsection with bullets on the article's substance. "
+            "Omit this subsection entirely if the input says the article was not "
+            "fetched or unavailable.\n"
+            "4. A blank line.\n"
+            "5. **Discussion** subsection with bullets on what HN is debating, "
+            "top counterpoints, and overall sentiment.\n\n"
+            "Keep the total under 400 words."
+        )
     return header + "Summarize the following content concisely."
 
 

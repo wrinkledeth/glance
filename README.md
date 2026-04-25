@@ -1,6 +1,6 @@
 # glance
 
-CLI (and optional tiny web app) to summarize YouTube videos, Reddit threads, and X posts — without exposing yourself to the algorithm.
+CLI (and optional tiny web app) to summarize YouTube videos, Reddit/HN threads, X posts, and articles — without exposing yourself to the algorithm.
 
 No browser tab. No autoplay. No "For You." Just the content you asked for :)
 
@@ -9,8 +9,10 @@ No browser tab. No autoplay. No "For You." Just the content you asked for :)
 Paste a URL → glance fetches content headlessly → an LLM summarizes and prints to the terminal.
 
 - **YouTube** — transcript via `yt-dlp`
-- **Reddit** — thread via JSON API  
+- **Reddit** — thread via JSON API
 - **X / Twitter** — tweet via oEmbed API
+- **Hacker News** — post + discussion via Algolia API (also fetches the linked article)
+- **Articles** — generic web pages via `trafilatura` (used as the fallback for any unrecognized URL)
 - **LLM** — Anthropic Claude (cloud) or Ollama (local)
 
 ## Setup
@@ -35,6 +37,8 @@ Configure in `.env` or override per-call with `--provider {anthropic,ollama}`.
 ```bash
 uv run glance "https://x.com/xyz/status/..."
 uv run glance --provider ollama "https://www.youtube.com/watch?v=..."
+uv run glance "https://news.ycombinator.com/item?id=..."   # article + discussion
+uv run glance "https://some.blog/post"                      # generic article fallback
 ```
 
 ## Web mode (mobile-friendly)
@@ -72,6 +76,8 @@ src/glance/
 ├── youtube.py      # yt-dlp transcript extraction
 ├── reddit.py       # Reddit JSON thread fetching
 ├── twitter.py      # Twitter/X oEmbed fetching
+├── hn.py           # Hacker News (Algolia API) + linked-article fetch
+├── article.py      # generic article extraction (trafilatura)
 ├── summarize.py    # LLM summarization (Anthropic or Ollama), streaming
 └── web.py          # FastAPI wrapper (glance-web entry point)
 deploy/
