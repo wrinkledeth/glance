@@ -51,14 +51,30 @@ INDEX_HTML = """<!doctype html>
     -webkit-appearance: none; appearance: none;
   }
   button:disabled { opacity: 0.5; }
-  #status { margin: 12px 0 4px; font-size: 13px; opacity: 0.6; min-height: 1.2em; }
+  .out-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    min-height: 34px; margin: 12px 0 4px;
+  }
+  #status {
+    flex: 1; min-width: 0;
+    font-size: 13px; opacity: 0.6; min-height: 1.2em;
+  }
   #out {
     white-space: pre-wrap; word-wrap: break-word;
     background: #111114; border: 1px solid #1f1f23; border-radius: 10px;
-    padding: 14px; margin-top: 4px;
+    padding: 14px;
     font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
     min-height: 4em;
   }
+  #copy {
+    flex: 0 0 auto;
+    width: 92px; padding: 6px 10px; font-size: 13px; text-align: center;
+    background: #1c1c21; color: #e6e6e6;
+    border: 1px solid #2a2a2f; border-radius: 8px;
+    visibility: hidden; pointer-events: none;
+  }
+  #copy.show { visibility: visible; pointer-events: auto; }
+  #copy.ok { background: #1f3a1f; border-color: #2f5a2f; }
 </style>
 </head>
 <body>
@@ -69,7 +85,10 @@ INDEX_HTML = """<!doctype html>
            spellcheck="false" placeholder="paste a YouTube / Reddit / X / HN / article URL" required>
     <button id="go" type="submit">Go</button>
   </form>
-  <div id="status"></div>
+  <div class="out-head">
+    <div id="status"></div>
+    <button id="copy" type="button">copy</button>
+  </div>
   <div id="out"></div>
 </main>
 <script>
@@ -78,12 +97,37 @@ INDEX_HTML = """<!doctype html>
   const go = document.getElementById('go');
   const status = document.getElementById('status');
   const out = document.getElementById('out');
+  const copy = document.getElementById('copy');
   let es = null;
+
+  async function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      if (!document.execCommand('copy')) {
+        throw new Error('copy failed');
+      }
+    } finally {
+      document.body.removeChild(ta);
+    }
+  }
 
   f.addEventListener('submit', (e) => {
     e.preventDefault();
     if (es) { es.close(); es = null; }
     out.textContent = '';
+    copy.classList.remove('show', 'ok');
+    copy.textContent = 'copy';
     status.textContent = 'fetching…';
     go.disabled = true;
     const url = u.value.trim();
@@ -91,6 +135,7 @@ INDEX_HTML = """<!doctype html>
     es.addEventListener('status', (ev) => { status.textContent = ev.data; });
     es.addEventListener('chunk', (ev) => {
       out.textContent += JSON.parse(ev.data);
+      if (out.textContent) copy.classList.add('show');
       window.scrollTo(0, document.body.scrollHeight);
     });
     es.addEventListener('error', (ev) => {
@@ -101,6 +146,21 @@ INDEX_HTML = """<!doctype html>
       status.textContent = 'done';
       es.close(); es = null; go.disabled = false;
     });
+  });
+
+  copy.addEventListener('click', async () => {
+    try {
+      await copyText(out.textContent);
+      copy.textContent = 'copied!';
+      copy.classList.add('ok');
+      setTimeout(() => {
+        copy.textContent = 'copy';
+        copy.classList.remove('ok');
+      }, 1200);
+    } catch {
+      copy.textContent = 'copy failed';
+      setTimeout(() => { copy.textContent = 'copy'; }, 1500);
+    }
   });
 </script>
 </body>
