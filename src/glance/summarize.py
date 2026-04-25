@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from datetime import date
 from typing import Iterator
 
 from dotenv import load_dotenv
@@ -13,13 +14,34 @@ ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
 
 
 def _system_prompt(source_type: str) -> str:
+    today = date.today().isoformat()
+    header = (
+        f"Today's date is {today}. Use it to flag content that is stale, time-sensitive, "
+        "or references events relative to now.\n\n"
+        "Format every response as:\n"
+        "1. A single-line **TL;DR:** (one sentence, no bullets).\n"
+        "2. A blank line.\n"
+        "3. Bullet points for the details.\n\n"
+    )
     if source_type == "youtube":
-        return "You summarize YouTube video transcripts. Give a clear, concise summary of the key points. Use bullet points for the main ideas. Keep it under 300 words."
+        return header + (
+            "You summarize YouTube video transcripts. Capture the core argument or "
+            "narrative, then the key supporting points. Skip filler, sponsor reads, "
+            "and intros. Keep the bullets under 300 words total."
+        )
     if source_type == "reddit":
-        return "You summarize Reddit threads. Summarize the post and the general sentiment/key points from the comments. Use bullet points. Keep it under 300 words."
+        return header + (
+            "You summarize Reddit threads. Cover what the post is about, then the "
+            "main threads of discussion and overall sentiment in the comments. Note "
+            "if top comments disagree with the post. Keep the bullets under 300 words total."
+        )
     if source_type == "twitter":
-        return "You summarize tweets and Twitter/X threads. Give a clear, concise summary of the key points and any notable context. Use bullet points. Keep it under 200 words."
-    return "Summarize the following content concisely using bullet points."
+        return header + (
+            "You summarize tweets and X threads. Capture the claim or story, any "
+            "notable context (who is speaking, what they're responding to), and the "
+            "tone. Keep the bullets under 200 words total."
+        )
+    return header + "Summarize the following content concisely."
 
 
 def _stream_anthropic(content: str, system: str) -> Iterator[str]:
@@ -42,12 +64,47 @@ def _parse_keep_alive(raw: str) -> int | str:
         return raw
 
 
+def _format_ollama_stats(done: dict) -> str | None:
+    parts: list[str] = []
+
+    load_ns = done.get("load_duration") or 0
+    if load_ns >= 50_000_000:
+        parts.append(f"      load    {load_ns / 1e9:>6.2f}s")
+
+    pcount = done.get("prompt_eval_count") or 0
+    pdur_ns = done.get("prompt_eval_duration") or 0
+    if pcount and pdur_ns:
+        pdur = pdur_ns / 1e9
+        parts.append(
+            f"      prompt  {pcount:>5d} tok in {pdur:>5.2f}s  =  "
+            f"{pcount / pdur:>6.1f} tok/s"
+        )
+
+    ocount = done.get("eval_count") or 0
+    odur_ns = done.get("eval_duration") or 0
+    if ocount and odur_ns:
+        odur = odur_ns / 1e9
+        parts.append(
+            f"      output  {ocount:>5d} tok in {odur:>5.2f}s  =  "
+            f"{ocount / odur:>6.1f} tok/s"
+        )
+
+    total_ns = done.get("total_duration") or 0
+    if total_ns:
+        parts.append(f"      total                         {total_ns / 1e9:>6.2f}s")
+
+    if not parts:
+        return None
+    return "  ↳ ollama stats\n" + "\n".join(parts)
+
+
 def _stream_ollama(content: str, system: str) -> Iterator[str]:
     host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     model = os.getenv("OLLAMA_MODEL", "qwen3.5:35B-A3B")
     keep_alive = _parse_keep_alive(os.getenv("GLANCE_OLLAMA_KEEP_ALIVE", "0"))
     print(f"→ ollama / {model}", file=sys.stderr, flush=True)
 
+    done_obj: dict | None = None
     with httpx.stream(
         "POST",
         f"{host.rstrip('/')}/api/chat",
@@ -72,7 +129,13 @@ def _stream_ollama(content: str, system: str) -> Iterator[str]:
             if chunk:
                 yield chunk
             if obj.get("done"):
+                done_obj = obj
                 break
+
+    if done_obj is not None:
+        stats = _format_ollama_stats(done_obj)
+        if stats:
+            print(stats, file=sys.stderr, flush=True)
 
 
 def _stream_web(content: str, system: str) -> Iterator[str]:
