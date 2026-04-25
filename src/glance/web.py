@@ -68,13 +68,20 @@ INDEX_HTML = """<!doctype html>
   }
   #copy {
     flex: 0 0 auto;
-    width: 92px; padding: 6px 10px; font-size: 13px; text-align: center;
-    background: #1c1c21; color: #e6e6e6;
-    border: 1px solid #2a2a2f; border-radius: 8px;
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    min-height: 28px; padding: 4px 6px;
+    font-size: 13px; font-weight: 400; line-height: 1;
+    background: transparent; color: rgba(230, 230, 230, 0.6);
+    border: 0; border-radius: 7px;
     visibility: hidden; pointer-events: none;
+    transition: background-color 120ms ease, color 120ms ease, transform 80ms ease;
   }
+  #copy svg { width: 14px; height: 14px; stroke-width: 1.8; }
   #copy.show { visibility: visible; pointer-events: auto; }
-  #copy.ok { background: #1f3a1f; border-color: #2f5a2f; }
+  #copy:hover { background: rgba(255, 255, 255, 0.04); color: rgba(230, 230, 230, 0.86); }
+  #copy:active { background: rgba(255, 255, 255, 0.03); transform: translateY(1px); }
+  #copy:focus-visible { outline: 2px solid #4a8cff; outline-offset: 2px; }
+  #copy.ok { color: #9ecf9e; }
 </style>
 </head>
 <body>
@@ -87,7 +94,13 @@ INDEX_HTML = """<!doctype html>
   </form>
   <div class="out-head">
     <div id="status"></div>
-    <button id="copy" type="button">copy</button>
+    <button id="copy" type="button" aria-label="Copy summary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
+        <rect x="8" y="8" width="11" height="11" rx="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="copy-label">Copy</span>
+    </button>
   </div>
   <div id="out"></div>
 </main>
@@ -98,7 +111,12 @@ INDEX_HTML = """<!doctype html>
   const status = document.getElementById('status');
   const out = document.getElementById('out');
   const copy = document.getElementById('copy');
+  const copyLabel = copy.querySelector('.copy-label');
   let es = null;
+
+  function setCopyLabel(label) {
+    copyLabel.textContent = label;
+  }
 
   async function copyText(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -127,7 +145,7 @@ INDEX_HTML = """<!doctype html>
     if (es) { es.close(); es = null; }
     out.textContent = '';
     copy.classList.remove('show', 'ok');
-    copy.textContent = 'copy';
+    setCopyLabel('Copy');
     status.textContent = 'fetching…';
     go.disabled = true;
     const url = u.value.trim();
@@ -151,15 +169,15 @@ INDEX_HTML = """<!doctype html>
   copy.addEventListener('click', async () => {
     try {
       await copyText(out.textContent);
-      copy.textContent = 'copied!';
+      setCopyLabel('Copied');
       copy.classList.add('ok');
       setTimeout(() => {
-        copy.textContent = 'copy';
+        setCopyLabel('Copy');
         copy.classList.remove('ok');
       }, 1200);
     } catch {
-      copy.textContent = 'copy failed';
-      setTimeout(() => { copy.textContent = 'copy'; }, 1500);
+      setCopyLabel('Copy failed');
+      setTimeout(() => { setCopyLabel('Copy'); }, 1500);
     }
   });
 </script>
