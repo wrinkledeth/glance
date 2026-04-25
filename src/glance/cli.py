@@ -28,6 +28,12 @@ def main():
         description="Get LLM summaries of YouTube videos and Reddit threads",
     )
     parser.add_argument("url", help="YouTube or Reddit URL to summarize")
+    parser.add_argument(
+        "--provider",
+        choices=["anthropic", "ollama"],
+        default=None,
+        help="LLM provider to use (overrides LLM_PROVIDER env var)",
+    )
     args = parser.parse_args()
 
     source = detect_source(args.url)
@@ -50,8 +56,7 @@ def main():
             from glance.twitter import fetch_tweet
             content = fetch_tweet(args.url)
 
-        print("Summarizing...", file=sys.stderr)
-        result = summarize(content, source)
+        result = summarize(content, source, provider=args.provider)
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
