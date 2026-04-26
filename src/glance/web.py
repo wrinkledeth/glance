@@ -792,6 +792,6 @@ def llm_endpoint(req: LLMRequest) -> StreamingResponse:
 
 def run() -> None:
     import uvicorn
-    host = os.getenv("GLANCE_HOST", "0.0.0.0")
+    host = os.getenv("GLANCE_HOST", "127.0.0.1")
     port = int(os.getenv("GLANCE_PORT", "8765"))
     uvicorn.run("glance.web:app", host=host, port=port, log_level="info")

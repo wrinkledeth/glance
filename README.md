@@ -46,10 +46,16 @@ uv run glance "https://some.blog/post"                      # generic article fa
 There is also a tiny FastAPI wrapper so you can paste a URL from your phone and get a streamed summary. Useful when your server is on a Tailscale tailnet alongside your phone.
 
 ```bash
-uv run glance-web              # binds to GLANCE_HOST:GLANCE_PORT (defaults 0.0.0.0:8765)
+uv run glance-web              # binds to GLANCE_HOST:GLANCE_PORT (defaults 127.0.0.1:8765)
 ```
 
-Then open `http://<server>:8765/` and **Add to Home Screen** for an app-like launcher.
+By default glance-web binds to localhost. To expose it on your tailnet over TLS, front it with [`tailscale serve`](https://tailscale.com/kb/1242/tailscale-serve) (no firewall holes, no `0.0.0.0`):
+
+```bash
+tailscale serve --bg --https=8443 http://127.0.0.1:8765
+```
+
+Then open `https://<machine>.<tailnet>.ts.net:8443/` and **Add to Home Screen** for an app-like launcher. Tailscale's three TLS ports are `443`, `8443`, and `10000` — pick whichever isn't already taken by another service.
 
 Generation runs as a background job on the server, decoupled from the HTTP request. The page polls for new chunks every ~400ms and stores the active job id in `localStorage`, so locking your phone, switching apps, or reloading the tab mid-generation will pick the summary back up where it left off (jobs are retained for 10 minutes after completion).
 
@@ -57,7 +63,7 @@ Every successful summary is persisted to a SQLite history. After generation the 
 
 Relevant `.env` knobs:
 
-- `GLANCE_HOST` / `GLANCE_PORT` — bind address. Set `GLANCE_HOST` to a Tailscale IP to expose only on the tailnet.
+- `GLANCE_HOST` / `GLANCE_PORT` — bind address. Defaults to `127.0.0.1:8765`; front with `tailscale serve` for tailnet exposure.
 - `GLANCE_OLLAMA_KEEP_ALIVE` — seconds (or `"5m"`-style duration) Ollama keeps the model in VRAM after each request. Defaults to `0` (unload immediately) so the GPU is free for other workloads.
 - `GLANCE_DB` — path to the SQLite history file. Defaults to `~/.cache/glance/glance.db`.
 
