@@ -1,7 +1,11 @@
+import asyncio
 import base64
 import json
 import os
+import secrets
+import time
 import traceback
+from dataclasses import dataclass, field
 from typing import Iterator
 
 from fastapi import FastAPI, HTTPException, Query
@@ -122,23 +126,48 @@ INDEX_HTML = """<!doctype html>
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
   main { max-width: 720px; margin: 0 auto; padding: 16px; }
-  h1 { font-size: 1.1rem; margin: 8px 0 12px; letter-spacing: 0.02em; opacity: 0.7; font-weight: 500; }
+  h1 {
+    font-size: 1.1rem; margin: 8px 0 12px; letter-spacing: 0.02em;
+    opacity: 0.7; font-weight: 500; line-height: 1;
+    display: inline-flex; align-items: center; gap: 0.5em;
+  }
+  h1 svg { width: 1.15em; height: 1.15em; display: block; transform: translateY(0.06em); }
   form { display: flex; gap: 8px; }
+  .url-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
   input[type=url] {
     flex: 1; min-width: 0;
-    padding: 12px 14px; font-size: 16px;
+    padding: 12px 76px 12px 14px; font-size: 16px;
     background: #161619; color: #e6e6e6;
     border: 1px solid #2a2a2f; border-radius: 10px;
     -webkit-appearance: none; appearance: none;
   }
   input[type=url]:focus { outline: none; border-color: #4a8cff; }
-  button {
+  .url-actions {
+    position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+    display: flex; gap: 2px;
+  }
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; padding: 0;
+    background: transparent; color: rgba(230, 230, 230, 0.55);
+    border: 0; border-radius: 7px; cursor: pointer;
+    -webkit-appearance: none; appearance: none;
+    visibility: hidden; pointer-events: none;
+    transition: background-color 120ms ease, color 120ms ease, transform 80ms ease;
+  }
+  .icon-btn svg { width: 14px; height: 14px; stroke-width: 1.8; }
+  .icon-btn.show { visibility: visible; pointer-events: auto; }
+  .icon-btn:hover { background: rgba(255, 255, 255, 0.04); color: rgba(230, 230, 230, 0.86); }
+  .icon-btn:active { background: rgba(255, 255, 255, 0.03); transform: translateY(1px); }
+  .icon-btn:focus-visible { outline: 2px solid #4a8cff; outline-offset: 2px; }
+  .icon-btn.ok { color: #9ecf9e; }
+  button#go {
     padding: 12px 16px; font-size: 16px; font-weight: 600;
     background: #4a8cff; color: #fff;
     border: 0; border-radius: 10px;
     -webkit-appearance: none; appearance: none;
   }
-  button:disabled { opacity: 0.5; }
+  button#go:disabled { opacity: 0.5; }
   .out-head {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     min-height: 34px; margin: 12px 0 4px;
@@ -146,7 +175,9 @@ INDEX_HTML = """<!doctype html>
   #status {
     flex: 1; min-width: 0;
     font-size: 13px; opacity: 0.6; min-height: 1.2em;
+    transition: color 200ms ease;
   }
+  #status.error { color: #e88b8b; opacity: 0.85; }
   #out {
     white-space: pre-wrap; word-wrap: break-word;
     background: #111114; border: 1px solid #1f1f23; border-radius: 10px;
@@ -155,42 +186,49 @@ INDEX_HTML = """<!doctype html>
     min-height: 4em;
   }
   #copy {
-    flex: 0 0 auto;
-    display: inline-flex; align-items: center; gap: 0.35rem;
-    min-height: 28px; padding: 4px 6px;
-    font-size: 13px; font-weight: 400; line-height: 1;
-    background: transparent; color: rgba(230, 230, 230, 0.6);
-    border: 0; border-radius: 7px;
-    visibility: hidden; pointer-events: none;
-    transition: background-color 120ms ease, color 120ms ease, transform 80ms ease;
+    float: right; margin: -2px 0 4px 8px;
+    visibility: visible; pointer-events: auto;
+    display: none;
   }
-  #copy svg { width: 14px; height: 14px; stroke-width: 1.8; }
-  #copy.show { visibility: visible; pointer-events: auto; }
-  #copy:hover { background: rgba(255, 255, 255, 0.04); color: rgba(230, 230, 230, 0.86); }
-  #copy:active { background: rgba(255, 255, 255, 0.03); transform: translateY(1px); }
-  #copy:focus-visible { outline: 2px solid #4a8cff; outline-offset: 2px; }
-  #copy.ok { color: #9ecf9e; }
+  #copy.show { display: inline-flex; }
+  #copy .check { display: none; }
+  #copy.ok .clip { display: none; }
+  #copy.ok .check { display: inline; }
 </style>
 </head>
 <body>
 <main>
-  <h1>glance</h1>
+  <h1>
+    <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+      <path d="M10 33c5.5-9 13-14 22-14s16.5 5 22 14c-5.5 8-13 12-22 12s-16.5-4-22-12Z"/>
+      <circle cx="32" cy="32" r="5" fill="currentColor" stroke="none"/>
+    </svg>
+    <span>glance</span>
+  </h1>
   <form id="f">
-    <input id="u" type="url" inputmode="url" autocapitalize="off" autocorrect="off"
-           spellcheck="false" placeholder="paste a YouTube / Reddit / X / HN / article URL" required>
+    <div class="url-wrap">
+      <input id="u" type="url" inputmode="url" autocapitalize="off" autocorrect="off"
+             spellcheck="false" placeholder="paste a YouTube / Reddit / X / HN / article URL" required>
+      <div class="url-actions">
+        <button id="ucopy" class="icon-btn" type="button" aria-label="Copy URL" title="Copy URL">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
+            <rect x="8" y="8" width="11" height="11" rx="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        </button>
+        <button id="uclear" class="icon-btn" type="button" aria-label="Clear URL" title="Clear URL">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" aria-hidden="true" focusable="false">
+            <path d="M6 6 L18 18 M18 6 L6 18"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
     <button id="go" type="submit">Go</button>
   </form>
   <div class="out-head">
     <div id="status"></div>
-    <button id="copy" type="button" aria-label="Copy summary">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
-        <rect x="8" y="8" width="11" height="11" rx="2"></rect>
-        <path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path>
-      </svg>
-      <span class="copy-label">Copy</span>
-    </button>
   </div>
-  <div id="out"></div>
+  <div id="out"><button id="copy" class="icon-btn" type="button" aria-label="Copy summary" title="Copy summary"><svg class="clip" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg><svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12.5 L10 17.5 L19 7.5"></path></svg></button><span id="out-text"></span></div>
 </main>
 <script>
   const f = document.getElementById('f');
@@ -198,13 +236,98 @@ INDEX_HTML = """<!doctype html>
   const go = document.getElementById('go');
   const status = document.getElementById('status');
   const out = document.getElementById('out');
+  const outText = document.getElementById('out-text');
   const copy = document.getElementById('copy');
-  const copyLabel = copy.querySelector('.copy-label');
-  let es = null;
+  const ucopy = document.getElementById('ucopy');
+  const uclear = document.getElementById('uclear');
+  let pollingId = null;
+  const JOB_KEY = 'glance.job';
 
-  function setCopyLabel(label) {
-    copyLabel.textContent = label;
+  function setStatus(text, kind) {
+    status.textContent = text;
+    status.classList.toggle('error', kind === 'error');
   }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  function resetOutput() {
+    outText.textContent = '';
+    copy.classList.remove('show', 'ok');
+  }
+
+  async function pollJob(jobId) {
+    if (pollingId === jobId) return;
+    pollingId = jobId;
+    let cursor = 0;
+    resetOutput();
+    setStatus('resuming…');
+    go.disabled = true;
+    try {
+      while (pollingId === jobId) {
+        let resp;
+        try {
+          resp = await fetch('/summarize/' + encodeURIComponent(jobId) + '?cursor=' + cursor);
+        } catch (_) {
+          await sleep(800);
+          continue;
+        }
+        if (resp.status === 404) {
+          localStorage.removeItem(JOB_KEY);
+          setStatus('job expired', 'error');
+          break;
+        }
+        if (!resp.ok) {
+          await sleep(800);
+          continue;
+        }
+        const data = await resp.json();
+        for (const ev of data.events) {
+          if (ev.kind === 'status') {
+            setStatus(ev.data);
+          } else if (ev.kind === 'chunk') {
+            outText.textContent += ev.data;
+            if (outText.textContent) copy.classList.add('show');
+            window.scrollTo(0, document.body.scrollHeight);
+          } else if (ev.kind === 'done') {
+            setStatus('done');
+          } else if (ev.kind === 'error') {
+            setStatus('error: ' + ev.data, 'error');
+          }
+        }
+        cursor = data.next_cursor;
+        if (data.status !== 'running') {
+          localStorage.removeItem(JOB_KEY);
+          break;
+        }
+        await sleep(400);
+      }
+    } finally {
+      if (pollingId === jobId) pollingId = null;
+      go.disabled = false;
+    }
+  }
+
+  function refreshUrlActions() {
+    const has = u.value.length > 0;
+    ucopy.classList.toggle('show', has);
+    uclear.classList.toggle('show', has);
+  }
+  u.addEventListener('input', refreshUrlActions);
+  refreshUrlActions();
+
+  ucopy.addEventListener('click', async () => {
+    if (!u.value) return;
+    try {
+      await copyText(u.value);
+      ucopy.classList.add('ok');
+      setTimeout(() => ucopy.classList.remove('ok'), 1000);
+    } catch {}
+  });
+  uclear.addEventListener('click', () => {
+    u.value = '';
+    refreshUrlActions();
+    u.focus();
+  });
 
   async function copyText(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -228,45 +351,50 @@ INDEX_HTML = """<!doctype html>
     }
   }
 
-  f.addEventListener('submit', (e) => {
+  f.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (es) { es.close(); es = null; }
-    out.textContent = '';
-    copy.classList.remove('show', 'ok');
-    setCopyLabel('Copy');
-    status.textContent = 'fetching…';
+    pollingId = null;
+    resetOutput();
+    setStatus('starting…');
     go.disabled = true;
     const url = u.value.trim();
-    es = new EventSource('/summarize?url=' + encodeURIComponent(url));
-    es.addEventListener('status', (ev) => { status.textContent = ev.data; });
-    es.addEventListener('chunk', (ev) => {
-      out.textContent += JSON.parse(ev.data);
-      if (out.textContent) copy.classList.add('show');
-      window.scrollTo(0, document.body.scrollHeight);
-    });
-    es.addEventListener('error', (ev) => {
-      if (ev.data) status.textContent = 'error: ' + ev.data;
-      es.close(); es = null; go.disabled = false;
-    });
-    es.addEventListener('done', () => {
-      status.textContent = 'done';
-      es.close(); es = null; go.disabled = false;
-    });
+    try {
+      const resp = await fetch('/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      if (!resp.ok) {
+        let msg = 'failed to start (' + resp.status + ')';
+        try { const j = await resp.json(); if (j && j.detail) msg = j.detail; } catch (_) {}
+        throw new Error(msg);
+      }
+      const { job_id } = await resp.json();
+      localStorage.setItem(JOB_KEY, job_id);
+      pollJob(job_id);
+    } catch (err) {
+      setStatus('error: ' + err.message, 'error');
+      go.disabled = false;
+    }
   });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    const jid = localStorage.getItem(JOB_KEY);
+    if (jid && pollingId !== jid) pollJob(jid);
+  });
+
+  (() => {
+    const jid = localStorage.getItem(JOB_KEY);
+    if (jid) pollJob(jid);
+  })();
 
   copy.addEventListener('click', async () => {
     try {
-      await copyText(out.textContent);
-      setCopyLabel('Copied');
+      await copyText(outText.textContent);
       copy.classList.add('ok');
-      setTimeout(() => {
-        setCopyLabel('Copy');
-        copy.classList.remove('ok');
-      }, 1200);
-    } catch {
-      setCopyLabel('Copy failed');
-      setTimeout(() => { setCopyLabel('Copy'); }, 1500);
-    }
+      setTimeout(() => copy.classList.remove('ok'), 1200);
+    } catch {}
   });
 </script>
 </body>
@@ -303,10 +431,6 @@ def healthz() -> dict:
     return {"ok": True}
 
 
-def _sse(event: str, data: str) -> str:
-    return f"event: {event}\ndata: {data}\n\n"
-
-
 def _fetch_content(source: str, url: str) -> str:
     if source == "youtube":
         from glance.youtube import extract_transcript
@@ -326,31 +450,69 @@ def _fetch_content(source: str, url: str) -> str:
     raise ValueError(f"unsupported source: {source}")
 
 
-def _summarize_events(url: str, provider: str | None) -> Iterator[str]:
-    source = detect_source(url)
+@dataclass
+class Job:
+    id: str
+    events: list[dict] = field(default_factory=list)
+    status: str = "running"
+    created_at: float = field(default_factory=time.time)
 
+
+_JOBS: dict[str, Job] = {}
+_JOB_TTL_SEC = 600
+
+
+def _sweep_jobs() -> None:
+    now = time.time()
+    expired = [
+        jid for jid, j in _JOBS.items()
+        if j.status != "running" and now - j.created_at > _JOB_TTL_SEC
+    ]
+    for jid in expired:
+        _JOBS.pop(jid, None)
+
+
+def _run_job_sync(job: Job, url: str, provider: str | None) -> None:
     try:
-        yield _sse("status", f"fetching {source}…")
+        source = detect_source(url)
+        job.events.append({"kind": "status", "data": f"fetching {source}…"})
         content = _fetch_content(source, url)
-        yield _sse("status", "summarizing…")
+        job.events.append({"kind": "status", "data": "summarizing…"})
         for chunk in summarize_stream(content, source, provider=provider):
-            yield _sse("chunk", json.dumps(chunk))
-        yield _sse("done", "")
+            job.events.append({"kind": "chunk", "data": chunk})
+        job.events.append({"kind": "done", "data": ""})
+        job.status = "done"
     except Exception as exc:
         traceback.print_exc()
-        yield _sse("error", str(exc) or exc.__class__.__name__)
+        job.events.append({"kind": "error", "data": str(exc) or exc.__class__.__name__})
+        job.status = "error"
 
 
-@app.get("/summarize")
-def summarize_endpoint(
-    url: str = Query(...),
-    provider: str | None = Query(None),
-) -> StreamingResponse:
-    return StreamingResponse(
-        _summarize_events(url, provider),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+class SummarizeRequest(BaseModel):
+    url: str
+    provider: str | None = None
+
+
+@app.post("/summarize")
+async def summarize_start(req: SummarizeRequest) -> dict:
+    _sweep_jobs()
+    job_id = secrets.token_urlsafe(12)
+    job = Job(id=job_id)
+    _JOBS[job_id] = job
+    asyncio.create_task(asyncio.to_thread(_run_job_sync, job, req.url, req.provider))
+    return {"job_id": job_id}
+
+
+@app.get("/summarize/{job_id}")
+def summarize_poll(job_id: str, cursor: int = 0) -> dict:
+    job = _JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(404, "job not found")
+    return {
+        "events": job.events[cursor:],
+        "next_cursor": len(job.events),
+        "status": job.status,
+    }
 
 
 class LLMRequest(BaseModel):

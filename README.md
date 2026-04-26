@@ -49,7 +49,9 @@ There is also a tiny FastAPI wrapper so you can paste a URL from your phone and 
 uv run glance-web              # binds to GLANCE_HOST:GLANCE_PORT (defaults 0.0.0.0:8765)
 ```
 
-Then open `http://<server>:8765/` and **Add to Home Screen** for an app-like launcher. The page streams chunks via Server-Sent Events as the model generates.
+Then open `http://<server>:8765/` and **Add to Home Screen** for an app-like launcher.
+
+Generation runs as a background job on the server, decoupled from the HTTP request. The page polls for new chunks every ~400ms and stores the active job id in `localStorage`, so locking your phone, switching apps, or reloading the tab mid-generation will pick the summary back up where it left off (jobs are retained for 10 minutes after completion).
 
 Relevant `.env` knobs:
 
