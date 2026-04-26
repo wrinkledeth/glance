@@ -69,12 +69,30 @@ def _system_prompt(source_type: str) -> str:
     return header + "Summarize the following content concisely."
 
 
+def resolve_model(provider: str | None = None) -> tuple[str, str]:
+    """Return (provider, model) for the given (or env-configured) provider.
+
+    For the 'web' provider the model is unknown locally (the remote decides),
+    so we return a sentinel string. Callers using this for cache keys should
+    treat 'web' as opaque or query the remote separately.
+    """
+    if provider is None:
+        provider = os.getenv("LLM_PROVIDER", "anthropic")
+    if provider == "anthropic":
+        return provider, ANTHROPIC_MODEL
+    if provider == "ollama":
+        return provider, os.getenv("OLLAMA_MODEL", "qwen3.5:35B-A3B")
+    if provider == "web":
+        return provider, "remote"
+    raise ValueError(f"Unknown LLM provider: {provider!r}")
+
+
 def _stream_anthropic(content: str, system: str) -> Iterator[str]:
     print(f"→ anthropic / {ANTHROPIC_MODEL}", file=sys.stderr, flush=True)
     client = anthropic.Anthropic()
     with client.messages.stream(
         model=ANTHROPIC_MODEL,
-        max_tokens=1024,
+        max_tokens=2048,
         system=system,
         messages=[{"role": "user", "content": content}],
     ) as stream:

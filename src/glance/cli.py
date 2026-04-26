@@ -4,7 +4,8 @@ import sys
 import textwrap
 from urllib.parse import urlparse
 
-from glance.summarize import summarize
+from glance import store
+from glance.summarize import resolve_model, summarize
 
 
 def detect_source(url: str) -> str:
@@ -41,8 +42,9 @@ def main():
     source = detect_source(args.url)
 
     try:
-        print(f"Fetching {source} content...", file=sys.stderr)
+        _, model = resolve_model(args.provider)
 
+        print(f"Fetching {source} content...", file=sys.stderr)
         if source == "youtube":
             from glance.youtube import extract_transcript
             content = extract_transcript(args.url)
@@ -60,6 +62,8 @@ def main():
             content = fetch_article(args.url)
 
         result = summarize(content, source, provider=args.provider)
+        if result.strip():
+            store.put(args.url, source, model, result)
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)

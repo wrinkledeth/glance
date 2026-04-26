@@ -53,10 +53,13 @@ Then open `http://<server>:8765/` and **Add to Home Screen** for an app-like lau
 
 Generation runs as a background job on the server, decoupled from the HTTP request. The page polls for new chunks every ~400ms and stores the active job id in `localStorage`, so locking your phone, switching apps, or reloading the tab mid-generation will pick the summary back up where it left off (jobs are retained for 10 minutes after completion).
 
+Every successful summary is persisted to a SQLite history. After generation the URL becomes `/s/<id>` so you can bookmark or share a single summary, and `/history` gives a searchable list of everything you've glanced at. CLI runs write to the same store.
+
 Relevant `.env` knobs:
 
 - `GLANCE_HOST` / `GLANCE_PORT` — bind address. Set `GLANCE_HOST` to a Tailscale IP to expose only on the tailnet.
 - `GLANCE_OLLAMA_KEEP_ALIVE` — seconds (or `"5m"`-style duration) Ollama keeps the model in VRAM after each request. Defaults to `0` (unload immediately) so the GPU is free for other workloads.
+- `GLANCE_DB` — path to the SQLite history file. Defaults to `~/.cache/glance/glance.db`.
 
 ### Run it as a systemd service
 
@@ -81,6 +84,7 @@ src/glance/
 ├── hn.py           # Hacker News (Algolia API) + linked-article fetch
 ├── article.py      # generic article extraction (trafilatura)
 ├── summarize.py    # LLM summarization (Anthropic or Ollama), streaming
+├── store.py        # SQLite history (write-only log of summaries)
 └── web.py          # FastAPI wrapper (glance-web entry point)
 deploy/
 └── glance-web.service  # example systemd unit

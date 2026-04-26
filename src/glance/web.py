@@ -1,11 +1,13 @@
 import asyncio
 import base64
+import html
 import json
 import os
 import secrets
 import time
 import traceback
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Iterator
 
 from fastapi import FastAPI, HTTPException, Query
@@ -13,7 +15,8 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from glance.cli import detect_source
-from glance.summarize import ANTHROPIC_MODEL, _stream_anthropic, _stream_ollama, summarize_stream
+from glance import store
+from glance.summarize import _stream_anthropic, _stream_ollama, resolve_model, summarize_stream
 
 
 app = FastAPI(title="glance")
@@ -126,25 +129,34 @@ INDEX_HTML = """<!doctype html>
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
   main { max-width: 720px; margin: 0 auto; padding: 16px; }
-  h1 {
-    font-size: 1.1rem; margin: 8px 0 12px; letter-spacing: 0.02em;
-    opacity: 0.7; font-weight: 500; line-height: 1;
-    display: inline-flex; align-items: center; gap: 0.5em;
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin: 8px 0 14px; }
+  .topbar h1 {
+    font-size: 1.1rem; margin: 0; letter-spacing: 0.02em;
+    opacity: 0.75; font-weight: 500; line-height: 1;
   }
-  h1 svg { width: 1.15em; height: 1.15em; display: block; transform: translateY(0.06em); }
-  form { display: flex; gap: 8px; }
-  .url-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
+  .topbar h1 a {
+    display: inline-flex; align-items: center; gap: 0.5em;
+    color: inherit; text-decoration: none;
+  }
+  .topbar h1 svg { width: 1.15em; height: 1.15em; display: block; transform: translateY(0.06em); }
+  .topbar nav { font-size: 0.9rem; opacity: 0.65; display: flex; gap: 14px; }
+  .topbar nav a { color: inherit; text-decoration: none; }
+  .topbar nav a:hover { color: #4a8cff; }
+  .topbar nav a.active { color: #e6e6e6; opacity: 1; }
+  form { display: block; }
+  .url-wrap { position: relative; display: flex; }
   input[type=url] {
     flex: 1; min-width: 0;
-    padding: 12px 76px 12px 14px; font-size: 16px;
+    padding: 13px 86px 13px 14px; font-size: 16px;
     background: #161619; color: #e6e6e6;
-    border: 1px solid #2a2a2f; border-radius: 10px;
+    border: 1px solid #2a2a2f; border-radius: 12px;
     -webkit-appearance: none; appearance: none;
+    transition: border-color 120ms ease;
   }
   input[type=url]:focus { outline: none; border-color: #4a8cff; }
   .url-actions {
-    position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
-    display: flex; gap: 2px;
+    position: absolute; top: 50%; right: 5px; transform: translateY(-50%);
+    display: flex; align-items: center; gap: 2px;
   }
   .icon-btn {
     display: inline-flex; align-items: center; justify-content: center;
@@ -161,13 +173,24 @@ INDEX_HTML = """<!doctype html>
   .icon-btn:active { background: rgba(255, 255, 255, 0.03); transform: translateY(1px); }
   .icon-btn:focus-visible { outline: 2px solid #4a8cff; outline-offset: 2px; }
   .icon-btn.ok { color: #9ecf9e; }
-  button#go {
-    padding: 12px 16px; font-size: 16px; font-weight: 600;
-    background: #4a8cff; color: #fff;
-    border: 0; border-radius: 10px;
-    -webkit-appearance: none; appearance: none;
+  .url-actions .divider {
+    width: 1px; height: 18px; background: rgba(255,255,255,0.08); margin: 0 2px;
+    opacity: 0; transition: opacity 120ms ease;
   }
-  button#go:disabled { opacity: 0.5; }
+  .url-actions .divider.show { opacity: 1; }
+  #go {
+    width: 34px; height: 34px; border-radius: 9px;
+    background: #2a2a2f; color: rgba(230, 230, 230, 0.45);
+    visibility: visible; pointer-events: auto;
+    transition: background-color 140ms ease, color 140ms ease, transform 80ms ease;
+  }
+  #go svg { width: 16px; height: 16px; stroke-width: 2; }
+  #go.ready { background: #4a8cff; color: #fff; }
+  #go.ready:hover { background: #3a7af0; }
+  #go:disabled { cursor: not-allowed; }
+  #go.busy { background: #2a2a2f; color: rgba(230, 230, 230, 0.55); }
+  #go.busy svg { animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .out-head {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     min-height: 34px; margin: 12px 0 4px;
@@ -198,13 +221,7 @@ INDEX_HTML = """<!doctype html>
 </head>
 <body>
 <main>
-  <h1>
-    <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-      <path d="M10 33c5.5-9 13-14 22-14s16.5 5 22 14c-5.5 8-13 12-22 12s-16.5-4-22-12Z"/>
-      <circle cx="32" cy="32" r="5" fill="currentColor" stroke="none"/>
-    </svg>
-    <span>glance</span>
-  </h1>
+__TOPBAR__
   <form id="f">
     <div class="url-wrap">
       <input id="u" type="url" inputmode="url" autocapitalize="off" autocorrect="off"
@@ -221,9 +238,15 @@ INDEX_HTML = """<!doctype html>
             <path d="M6 6 L18 18 M18 6 L6 18"></path>
           </svg>
         </button>
+        <span id="divider" class="divider"></span>
+        <button id="go" class="icon-btn" type="submit" aria-label="Summarize" title="Summarize">
+          <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <path d="M5 12h14"></path>
+            <path d="M13 6l6 6-6 6"></path>
+          </svg>
+        </button>
       </div>
     </div>
-    <button id="go" type="submit">Go</button>
   </form>
   <div class="out-head">
     <div id="status"></div>
@@ -240,6 +263,7 @@ INDEX_HTML = """<!doctype html>
   const copy = document.getElementById('copy');
   const ucopy = document.getElementById('ucopy');
   const uclear = document.getElementById('uclear');
+  const divider = document.getElementById('divider');
   let pollingId = null;
   const JOB_KEY = 'glance.job';
 
@@ -261,7 +285,7 @@ INDEX_HTML = """<!doctype html>
     let cursor = 0;
     resetOutput();
     setStatus('resuming…');
-    go.disabled = true;
+    setBusy(true);
     try {
       while (pollingId === jobId) {
         let resp;
@@ -290,6 +314,9 @@ INDEX_HTML = """<!doctype html>
             window.scrollTo(0, document.body.scrollHeight);
           } else if (ev.kind === 'done') {
             setStatus('done');
+            if (ev.data) {
+              try { history.replaceState(null, '', '/s/' + ev.data); } catch {}
+            }
           } else if (ev.kind === 'error') {
             setStatus('error: ' + ev.data, 'error');
           }
@@ -303,7 +330,7 @@ INDEX_HTML = """<!doctype html>
       }
     } finally {
       if (pollingId === jobId) pollingId = null;
-      go.disabled = false;
+      setBusy(false);
     }
   }
 
@@ -311,6 +338,10 @@ INDEX_HTML = """<!doctype html>
     const has = u.value.length > 0;
     ucopy.classList.toggle('show', has);
     uclear.classList.toggle('show', has);
+    divider.classList.toggle('show', has);
+    if (!go.classList.contains('busy')) {
+      go.classList.toggle('ready', has);
+    }
   }
   u.addEventListener('input', refreshUrlActions);
   refreshUrlActions();
@@ -356,7 +387,7 @@ INDEX_HTML = """<!doctype html>
     pollingId = null;
     resetOutput();
     setStatus('starting…');
-    go.disabled = true;
+    setBusy(true);
     const url = u.value.trim();
     try {
       const resp = await fetch('/summarize', {
@@ -374,9 +405,19 @@ INDEX_HTML = """<!doctype html>
       pollJob(job_id);
     } catch (err) {
       setStatus('error: ' + err.message, 'error');
-      go.disabled = false;
+      setBusy(false);
     }
   });
+
+  function setBusy(busy) {
+    go.disabled = busy;
+    go.classList.toggle('busy', busy);
+    if (busy) {
+      go.classList.remove('ready');
+    } else {
+      refreshUrlActions();
+    }
+  }
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
@@ -404,7 +445,7 @@ INDEX_HTML = """<!doctype html>
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:
-    return HTMLResponse(INDEX_HTML)
+    return HTMLResponse(INDEX_HTML.replace("__TOPBAR__", _topbar("new")))
 
 
 @app.get("/favicon.svg")
@@ -475,12 +516,18 @@ def _sweep_jobs() -> None:
 def _run_job_sync(job: Job, url: str, provider: str | None) -> None:
     try:
         source = detect_source(url)
+        _, model = resolve_model(provider)
+
         job.events.append({"kind": "status", "data": f"fetching {source}…"})
         content = _fetch_content(source, url)
         job.events.append({"kind": "status", "data": "summarizing…"})
+        parts: list[str] = []
         for chunk in summarize_stream(content, source, provider=provider):
+            parts.append(chunk)
             job.events.append({"kind": "chunk", "data": chunk})
-        job.events.append({"kind": "done", "data": ""})
+        summary = "".join(parts)
+        sid = store.put(url, source, model, summary) if summary.strip() else ""
+        job.events.append({"kind": "done", "data": sid})
         job.status = "done"
     except Exception as exc:
         traceback.print_exc()
@@ -515,24 +562,204 @@ def summarize_poll(job_id: str, cursor: int = 0) -> dict:
     }
 
 
+SHARED_HEAD = """<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0d">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: #0b0b0d; color: #e6e6e6;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 16px; }
+  a { color: #4a8cff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin: 8px 0 14px; }
+  .topbar h1 {
+    font-size: 1.1rem; margin: 0; letter-spacing: 0.02em;
+    opacity: 0.75; font-weight: 500; line-height: 1;
+  }
+  .topbar h1 a {
+    display: inline-flex; align-items: center; gap: 0.5em;
+    color: inherit; text-decoration: none;
+  }
+  .topbar h1 svg { width: 1.15em; height: 1.15em; display: block; transform: translateY(0.06em); }
+  .topbar nav { font-size: 0.9rem; opacity: 0.65; display: flex; gap: 14px; }
+  .topbar nav a { color: inherit; text-decoration: none; }
+  .topbar nav a:hover { color: #4a8cff; }
+  .topbar nav a.active { color: #e6e6e6; opacity: 1; }
+  .summary {
+    white-space: pre-wrap; word-wrap: break-word;
+    background: #111114; border: 1px solid #1f1f23; border-radius: 10px;
+    padding: 14px;
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  .meta { font-size: 13px; opacity: 0.6; margin: 0 0 12px; }
+  .meta .source { text-transform: lowercase; }
+  ul.history { list-style: none; padding: 0; margin: 0; }
+  ul.history li {
+    padding: 12px 0; border-bottom: 1px solid #1f1f23;
+  }
+  ul.history li:last-child { border-bottom: 0; }
+  ul.history .row1 {
+    display: flex; gap: 8px; align-items: baseline; font-size: 13px; opacity: 0.6;
+  }
+  ul.history .row1 .source { text-transform: lowercase; }
+  ul.history .title { display: block; margin: 2px 0 4px; font-size: 15px; }
+  ul.history .preview { font-size: 14px; opacity: 0.75; }
+  input.search {
+    width: 100%; padding: 10px 12px; font-size: 16px;
+    background: #161619; color: #e6e6e6;
+    border: 1px solid #2a2a2f; border-radius: 10px;
+    -webkit-appearance: none; appearance: none; margin-bottom: 12px;
+  }
+  input.search:focus { outline: none; border-color: #4a8cff; }
+</style>
+"""
+
+
+LOGO_SVG = (
+    '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5" '
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'
+    '<path d="M10 33c5.5-9 13-14 22-14s16.5 5 22 14c-5.5 8-13 12-22 12s-16.5-4-22-12Z"/>'
+    '<circle cx="32" cy="32" r="5" fill="currentColor" stroke="none"/>'
+    "</svg>"
+)
+
+
+def _topbar(active: str = "") -> str:
+    def link(href: str, label: str) -> str:
+        cls = ' class="active"' if active == label else ""
+        return f'<a href="{href}"{cls}>{label}</a>'
+    return (
+        '<div class="topbar">'
+        f'<h1><a href="/">{LOGO_SVG}<span>glance</span></a></h1>'
+        f'<nav>{link("/", "new")}{link("/history", "history")}</nav>'
+        "</div>"
+    )
+
+
+def _fmt_time(ts: int) -> str:
+    return datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M")
+
+
+def _first_line(text: str) -> str:
+    for line in text.splitlines():
+        s = line.strip()
+        if s:
+            return s
+    return ""
+
+
+@app.get("/s/{summary_id}", response_class=HTMLResponse)
+def summary_page(summary_id: str) -> HTMLResponse:
+    s = store.get_by_id(summary_id)
+    if s is None:
+        raise HTTPException(404, "summary not found")
+    body = (
+        "<!doctype html><html lang=\"en\"><head>"
+        + SHARED_HEAD
+        + f"<title>glance — {html.escape(s.url)}</title>"
+        + "</head><body><main>"
+        + _topbar()
+        + '<p class="meta">'
+        + f'<span class="source">{html.escape(s.source)}</span> · '
+        + f'{_fmt_time(s.created_at)} · '
+        + f'<a href="{html.escape(s.url)}" rel="noopener noreferrer" target="_blank">source</a>'
+        + "</p>"
+        + f'<div class="summary">{html.escape(s.summary)}</div>'
+        + "</main></body></html>"
+    )
+    return HTMLResponse(body)
+
+
+HISTORY_HTML = """<!doctype html><html lang="en"><head>
+""" + SHARED_HEAD + """<title>glance — history</title>
+</head><body><main>
+__TOPBAR__
+<input id="q" class="search" type="search" placeholder="search url or summary text" autocomplete="off">
+<ul id="list" class="history"></ul>
+<script>
+  const q = document.getElementById('q');
+  const list = document.getElementById('list');
+  const params = new URLSearchParams(location.search);
+  if (params.get('q')) q.value = params.get('q');
+
+  function fmtTime(ts) {
+    const d = new Date(ts * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+      + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  let token = 0;
+  async function load() {
+    const my = ++token;
+    const url = '/api/history' + (q.value ? '?q=' + encodeURIComponent(q.value) : '');
+    const resp = await fetch(url);
+    if (!resp.ok || my !== token) return;
+    const data = await resp.json();
+    if (my !== token) return;
+    list.innerHTML = data.items.map(it => (
+      '<li>'
+      + '<div class="row1"><span class="source">' + escapeHtml(it.source) + '</span>'
+      + ' · <span>' + fmtTime(it.created_at) + '</span></div>'
+      + '<a class="title" href="/s/' + encodeURIComponent(it.id) + '">' + escapeHtml(it.url) + '</a>'
+      + '<div class="preview">' + escapeHtml(it.preview) + '</div>'
+      + '</li>'
+    )).join('') || '<li style="opacity:0.5">no summaries yet</li>';
+  }
+
+  let timer = null;
+  q.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(load, 150);
+  });
+  load();
+</script>
+</main></body></html>
+"""
+
+
+@app.get("/history", response_class=HTMLResponse)
+def history_page() -> HTMLResponse:
+    return HTMLResponse(HISTORY_HTML.replace("__TOPBAR__", _topbar("history")))
+
+
+@app.get("/api/history")
+def history_api(q: str | None = None, limit: int = Query(50, ge=1, le=200)) -> dict:
+    items = store.list_recent(limit=limit, query=q)
+    return {
+        "items": [
+            {
+                "id": s.id,
+                "url": s.url,
+                "source": s.source,
+                "created_at": s.created_at,
+                "preview": _first_line(s.summary)[:200],
+            }
+            for s in items
+        ]
+    }
+
+
 class LLMRequest(BaseModel):
     content: str
     system: str | None = None
     source_type: str | None = None
 
 
-def _resolve_provider_model() -> tuple[str, str]:
-    provider = os.getenv("LLM_PROVIDER", "anthropic")
-    if provider == "anthropic":
-        return provider, ANTHROPIC_MODEL
-    if provider == "ollama":
-        return provider, os.getenv("OLLAMA_MODEL", "qwen3.5:35B-A3B")
-    return provider, "?"
-
-
 def _llm_events(req: LLMRequest) -> Iterator[str]:
     try:
-        provider, model = _resolve_provider_model()
+        provider, model = resolve_model()
         yield json.dumps({"meta": {"provider": provider, "model": model}}) + "\n"
 
         if req.system:
