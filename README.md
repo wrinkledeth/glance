@@ -78,6 +78,18 @@ sudo systemctl enable --now glance-web
 systemctl status glance-web
 ```
 
+If YouTube summaries fail under systemd with `No such file or directory: 'yt-dlp'`, the service is missing the user tool directory on `PATH`. `uv tool install yt-dlp` installs to `~/.local/bin`, but systemd does not always include that directory. Add an override:
+
+```bash
+sudo mkdir -p /etc/systemd/system/glance-web.service.d
+sudo tee /etc/systemd/system/glance-web.service.d/10-path.conf >/dev/null <<'EOF'
+[Service]
+Environment=PATH=/home/zen/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart glance-web
+```
+
 Logs: `journalctl -u glance-web -f`.
 
 ## Structure
