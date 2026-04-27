@@ -22,6 +22,10 @@ def _system_prompt(source_type: str) -> str:
         "1. A single-line **TL;DR:** (one sentence, no bullets).\n"
         "2. A blank line.\n"
         "3. Bullet points for the details.\n\n"
+        "Write summaries in third person. Do not say \"you\" to mean the reader, "
+        "the model, or the user. When the source addresses the reader directly "
+        "(for example, \"you need to...\"), attribute the claim instead, such as "
+        "\"the author argues...\" or \"the article says...\".\n\n"
     )
     if source_type == "youtube":
         return header + (

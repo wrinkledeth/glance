@@ -41,7 +41,23 @@ def _connect() -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        DELETE FROM summaries
+        WHERE rowid IN (
+          SELECT old.rowid
+          FROM summaries AS old
+          JOIN summaries AS newer
+            ON newer.url = old.url
+           AND (
+             newer.created_at > old.created_at
+             OR (newer.created_at = old.created_at AND newer.rowid > old.rowid)
+           )
+        )
+        """
+    )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_created ON summaries(created_at DESC)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_url_unique ON summaries(url)")
     return conn
 
 
@@ -64,13 +80,20 @@ def get_by_id(id: str) -> Summary | None:
 
 def put(url: str, source: str, model: str, summary: str) -> str:
     sid = secrets.token_urlsafe(8)
+    now = int(time.time())
     with _connect() as conn:
         conn.execute(
             "INSERT INTO summaries (id, url, source, model, summary, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (sid, url, source, model, summary, int(time.time())),
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(url) DO UPDATE SET "
+            "source = excluded.source, "
+            "model = excluded.model, "
+            "summary = excluded.summary, "
+            "created_at = excluded.created_at",
+            (sid, url, source, model, summary, now),
         )
-    return sid
+        row = conn.execute("SELECT id FROM summaries WHERE url = ?", (url,)).fetchone()
+    return row["id"]
 
 
 def list_recent(limit: int = 50, query: str | None = None) -> list[Summary]:

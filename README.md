@@ -59,7 +59,7 @@ Then open `https://<machine>.<tailnet>.ts.net:8443/` and **Add to Home Screen** 
 
 Generation runs as a background job on the server, decoupled from the HTTP request. The page polls for new chunks every ~400ms and stores the active job id in `localStorage`, so locking your phone, switching apps, or reloading the tab mid-generation will pick the summary back up where it left off (jobs are retained for 10 minutes after completion).
 
-Every successful summary is persisted to a SQLite history. After generation the URL becomes `/s/<id>` so you can bookmark or share a single summary, and `/history` gives a searchable list of everything you've glanced at. CLI runs write to the same store.
+Every successful summary is persisted to a SQLite history. Re-pasting the exact same URL still generates a fresh summary, then updates the existing history entry instead of adding a duplicate. After generation the URL becomes `/s/<id>` so you can bookmark or share a single summary, and `/history` gives a searchable list of everything you've glanced at. CLI runs write to the same store.
 
 Relevant `.env` knobs:
 
@@ -90,7 +90,7 @@ src/glance/
 ├── hn.py           # Hacker News (Algolia API) + linked-article fetch
 ├── article.py      # generic article extraction (trafilatura)
 ├── summarize.py    # LLM summarization (Anthropic or Ollama), streaming
-├── store.py        # SQLite history (write-only log of summaries)
+├── store.py        # SQLite history (fresh summaries, one row per exact URL)
 └── web.py          # FastAPI wrapper (glance-web entry point)
 deploy/
 └── glance-web.service  # example systemd unit
