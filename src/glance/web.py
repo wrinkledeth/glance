@@ -188,9 +188,7 @@ INDEX_HTML = """<!doctype html>
   #go.ready { background: #4a8cff; color: #fff; }
   #go.ready:hover { background: #3a7af0; }
   #go:disabled { cursor: not-allowed; }
-  #go.busy { background: #2a2a2f; color: rgba(230, 230, 230, 0.55); }
-  #go.busy svg { animation: spin 0.9s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  #go.busy { background: #2a2a2f; color: rgba(230, 230, 230, 0.35); }
   .out-head {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     min-height: 34px; margin: 12px 0 4px;
