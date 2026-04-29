@@ -1,12 +1,12 @@
 # glance
 
-CLI (and optional tiny web app) to summarize yt videos, ig/TikTok clips, reddit threads, x posts, hn submissions, and articles — without exposing yourself to the algorithm.
+CLI and tiny web app to summarize yt videos, ig/TikTok clips, reddit threads, x posts, hn submissions, and articles — without exposing yourself to the algorithm.
 
 No browser tab. No autoplay. No "For You." Just the content you asked for :)
 
 ## How it works
 
-Paste a URL → glance fetches content headlessly → an LLM summarizes and prints to the terminal.
+Paste a URL → glance fetches content headlessly → an LLM summarizes it. The CLI prints to the terminal; the web app streams to the browser and saves history.
 
 - **YouTube** — transcript via `yt-dlp`
 - **Instagram** — clip metadata/subtitles and top comments via `yt-dlp`; optional first-frame OCR and ASR fallback for missing subtitles
@@ -15,7 +15,7 @@ Paste a URL → glance fetches content headlessly → an LLM summarizes and prin
 - **X / Twitter** — tweet via oEmbed API
 - **Hacker News** — post + discussion via Algolia API (also fetches the linked article)
 - **Articles** — generic web pages via `trafilatura` (used as the fallback for any unrecognized URL)
-- **LLM** — Anthropic Claude (cloud) or Ollama (local)
+- **LLM** — Anthropic Claude (cloud), Ollama (local), or a remote `glance-web` instance
 
 ## Setup
 
@@ -27,23 +27,37 @@ uv tool install yt-dlp        # needed for yt/ig/TikTok — do NOT use apt's yt-
 cp .env.example .env          # configure provider (see below)
 ```
 
+Instagram/TikTok first-frame OCR and ASR also need `ffmpeg` on `PATH`.
+
 ### LLM provider
 
-Configure in `.env` or override per-call with `--provider {anthropic,ollama}`.
+Configure in `.env` or override per-call with `--provider {anthropic,ollama,web}`.
 
 - **Anthropic** (default): set `ANTHROPIC_API_KEY` and `LLM_PROVIDER=anthropic`.
-- **Ollama** (local): set `LLM_PROVIDER=ollama`, make sure `ollama serve` is running, and pull a model (e.g. `ollama pull qwen3.5:35B-A3B`). Tune `OLLAMA_HOST` and `OLLAMA_MODEL` as needed. Tokens stream live to stderr while the local model runs.
+- **Ollama** (local): set `LLM_PROVIDER=ollama` and make sure `ollama serve` is running. Tune `OLLAMA_HOST` and `OLLAMA_MODEL` as needed. Tokens stream live to stderr while the local model runs.
 - **Web** (remote): set `LLM_PROVIDER=web` and `GLANCE_WEB_URL=http://<host>:8765` to delegate the LLM call to a remote glance-web instance over the network (e.g. a GPU box on your tailnet). The remote machine's own `LLM_PROVIDER` decides whether it answers via Anthropic or Ollama — invisible to the caller. Glance posts pre-fetched content to `POST /llm`, so the remote doesn't re-fetch the source URL.
+
+### Local models
+
+The default `.env` uses three local models:
+
+```bash
+ollama pull qwen3.5:35B-A3B  # OLLAMA_MODEL, used for summaries
+ollama pull gemma4:e4b       # GLANCE_OCR_MODEL, used for first-frame OCR
+uv sync --extra asr          # installs faster-whisper for GLANCE_ASR_MODEL
+```
+
+`GLANCE_ASR_MODEL=large-v3-turbo` is fetched and cached by faster-whisper on first ASR use. Override any of these in `.env` if you use different local models.
 
 ### First-frame OCR for Instagram/TikTok
 
-Instagram and TikTok captures automatically try to OCR visible overlay text from the first decoded video frame using an Ollama vision model. This is optional and best effort; missing models, unavailable Ollama, still-image posts, blocked downloads, or OCR failures simply continue without an overlay-text section.
+Instagram and TikTok captures automatically try to OCR visible overlay text from the first decoded video frame using an Ollama vision model. This is optional and best effort; missing `ffmpeg`, missing models, unavailable Ollama, still-image posts, blocked downloads, or OCR failures simply continue without an overlay-text section.
 
 By default this uses `GLANCE_OCR_MODEL=gemma4:e4b` and `GLANCE_OCR_HOST=$OLLAMA_HOST` or `http://localhost:11434`.
 
 ### ASR fallback for Instagram/TikTok
 
-By default, Instagram and TikTok summaries only use subtitles returned by `yt-dlp`. To locally transcribe clips when subtitles are missing, install the optional ASR dependency and enable the fallback:
+For transcript text, Instagram and TikTok captures first use subtitles returned by `yt-dlp`. To locally transcribe clips when subtitles are missing, install the optional ASR dependency and enable the fallback:
 
 ```bash
 uv sync --extra asr
@@ -132,7 +146,7 @@ src/glance/
 ├── twitter.py      # Twitter/X oEmbed fetching
 ├── hn.py           # Hacker News (Algolia API) + linked-article fetch
 ├── article.py      # generic article extraction (trafilatura)
-├── summarize.py    # LLM summarization (Anthropic or Ollama), streaming
+├── summarize.py    # LLM summarization (Anthropic, Ollama, or remote web), streaming
 ├── store.py        # SQLite history (fresh summaries, one row per exact URL)
 └── web.py          # FastAPI wrapper (glance-web entry point)
 deploy/
