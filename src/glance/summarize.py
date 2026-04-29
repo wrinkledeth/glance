@@ -43,20 +43,25 @@ def _system_prompt(source_type: str) -> str:
     if source_type == "instagram":
         return header + (
             "You summarize Instagram clips. The input may include metadata, caption, "
-            "transcript text from yt-dlp subtitles or ASR, and top comments. Cover what the "
-            "clip says or shows, then summarize the top-comment discussion and overall "
-            "sentiment. Note if comments add context, dispute the clip, or focus on a "
-            "different takeaway. Keep the bullets under 300 words total."
+            "first-frame OCR overlay text, transcript text from yt-dlp subtitles or ASR, "
+            "and top comments. OCR overlay text can be useful context but may be noisy "
+            "and only reflects the first frame; do not treat it as proof of the whole "
+            "clip. Cover what the clip says or shows, then summarize the top-comment "
+            "discussion and overall sentiment. Note if comments add context, dispute "
+            "the clip, or focus on a different takeaway. Keep the bullets under 300 "
+            "words total."
         )
     if source_type == "tiktok":
         return header + (
             "You summarize TikTok videos. The input may include metadata, caption, "
-            "transcript text from yt-dlp subtitles or ASR, and top comments. Cover what the "
-            "video says or shows from the available evidence, then summarize the "
-            "top-comment discussion and overall sentiment if comments are present. "
-            "If no transcript is provided, do not invent spoken words or visual details "
-            "that are not supported by the caption or metadata. Keep the bullets under "
-            "300 words total."
+            "first-frame OCR overlay text, transcript text from yt-dlp subtitles or ASR, "
+            "and top comments. OCR overlay text can be useful context but may be noisy "
+            "and only reflects the first frame; do not treat it as proof of the whole "
+            "video. Cover what the video says or shows from the available evidence, then "
+            "summarize the top-comment discussion and overall sentiment if comments are "
+            "present. If no transcript is provided, do not invent spoken words or visual "
+            "details that are not supported by the caption, first-frame OCR, or metadata. "
+            "Keep the bullets under 300 words total."
         )
     if source_type == "twitter":
         return header + (

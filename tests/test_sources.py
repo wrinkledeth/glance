@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 from glance.asr import ASRTranscript
 from glance.cli import detect_source
 from glance.instagram import fetch_instagram
+from glance.ocr import OCRText
 from glance.tiktok import fetch_tiktok
 
 
@@ -38,6 +39,7 @@ class InstagramFetchTests(unittest.TestCase):
 
         with (
             patch("glance.instagram.subprocess.run", return_value=result) as run,
+            patch("glance.instagram.extract_first_frame_ocr", return_value=None),
             patch("glance.instagram.extract_transcript_from_info", return_value="spoken words"),
             patch("glance.instagram.transcribe_url") as transcribe_url,
         ):
@@ -51,6 +53,51 @@ class InstagramFetchTests(unittest.TestCase):
         self.assertIn("Top comments (3 shown of 3 reported):", content)
         self.assertLess(content.index("@top"), content.index("@low"))
 
+    def test_fetch_instagram_includes_first_frame_ocr_when_available(self) -> None:
+        info = {
+            "title": "Video by creator",
+            "channel": "creator",
+            "description": "caption text",
+        }
+        result = Mock(returncode=0, stdout=json.dumps(info), stderr="")
+
+        with (
+            patch("glance.instagram.subprocess.run", return_value=result),
+            patch(
+                "glance.instagram.extract_first_frame_ocr",
+                return_value=OCRText("overlay words", "tesseract"),
+            ) as extract_ocr,
+            patch("glance.instagram.extract_transcript_from_info", return_value="spoken words"),
+            patch("glance.instagram.transcribe_url"),
+        ):
+            content = fetch_instagram("https://www.instagram.com/reel/abc123/")
+
+        extract_ocr.assert_called_once_with("https://www.instagram.com/reel/abc123/", progress=None)
+        self.assertIn(
+            "Overlay text (first-frame OCR: tesseract):\noverlay words",
+            content,
+        )
+        self.assertLess(content.index("Caption:"), content.index("Overlay text"))
+        self.assertLess(content.index("Overlay text"), content.index("Transcript:"))
+
+    def test_fetch_instagram_omits_first_frame_ocr_when_unavailable(self) -> None:
+        info = {
+            "title": "Video by creator",
+            "channel": "creator",
+            "description": "caption text",
+        }
+        result = Mock(returncode=0, stdout=json.dumps(info), stderr="")
+
+        with (
+            patch("glance.instagram.subprocess.run", return_value=result),
+            patch("glance.instagram.extract_first_frame_ocr", return_value=None),
+            patch("glance.instagram.extract_transcript_from_info", return_value="spoken words"),
+            patch("glance.instagram.transcribe_url"),
+        ):
+            content = fetch_instagram("https://www.instagram.com/reel/abc123/")
+
+        self.assertNotIn("Overlay text (first-frame OCR", content)
+
     def test_fetch_instagram_reports_metadata_and_subtitle_progress(self) -> None:
         info = {
             "title": "Video by creator",
@@ -62,12 +109,16 @@ class InstagramFetchTests(unittest.TestCase):
 
         with (
             patch("glance.instagram.subprocess.run", return_value=result),
+            patch("glance.instagram.extract_first_frame_ocr", return_value=None) as extract_ocr,
             patch("glance.instagram.extract_transcript_from_info", return_value="spoken words"),
             patch("glance.instagram.transcribe_url") as transcribe_url,
         ):
             fetch_instagram("https://www.instagram.com/reel/abc123/", progress=events.append)
 
         transcribe_url.assert_not_called()
+        args, kwargs = extract_ocr.call_args
+        self.assertEqual(args, ("https://www.instagram.com/reel/abc123/",))
+        self.assertIs(kwargs["progress"].__self__, events)
         self.assertEqual(
             events,
             [
@@ -86,6 +137,7 @@ class InstagramFetchTests(unittest.TestCase):
 
         with (
             patch("glance.instagram.subprocess.run", return_value=result),
+            patch("glance.instagram.extract_first_frame_ocr", return_value=None),
             patch("glance.instagram.extract_transcript_from_info", return_value=None),
             patch(
                 "glance.instagram.transcribe_url",
@@ -108,6 +160,7 @@ class InstagramFetchTests(unittest.TestCase):
 
         with (
             patch("glance.instagram.subprocess.run", return_value=result),
+            patch("glance.instagram.extract_first_frame_ocr", return_value=None),
             patch("glance.instagram.extract_transcript_from_info", return_value=None),
             patch(
                 "glance.instagram.transcribe_url",
@@ -127,6 +180,7 @@ class InstagramFetchTests(unittest.TestCase):
 
         with (
             patch("glance.instagram.subprocess.run", return_value=result),
+            patch("glance.instagram.extract_first_frame_ocr", return_value=None),
             patch("glance.instagram.extract_transcript_from_info", return_value=None),
             patch("glance.instagram.transcribe_url", return_value=None) as transcribe_url,
         ):
@@ -150,6 +204,7 @@ class TikTokFetchTests(unittest.TestCase):
 
         with (
             patch("glance.tiktok.subprocess.run", return_value=result) as run,
+            patch("glance.tiktok.extract_first_frame_ocr", return_value=None),
             patch("glance.tiktok.extract_transcript_from_info", return_value=None),
             patch("glance.tiktok.transcribe_url", return_value=None) as transcribe_url,
         ):
@@ -181,6 +236,7 @@ class TikTokFetchTests(unittest.TestCase):
 
         with (
             patch("glance.tiktok.subprocess.run", return_value=result),
+            patch("glance.tiktok.extract_first_frame_ocr", return_value=None),
             patch("glance.tiktok.extract_transcript_from_info", return_value="spoken words"),
             patch("glance.tiktok.transcribe_url") as transcribe_url,
         ):
@@ -190,6 +246,51 @@ class TikTokFetchTests(unittest.TestCase):
         self.assertIn("Transcript:\nspoken words", content)
         self.assertIn("Top comments (2 shown of 2 reported):", content)
         self.assertLess(content.index("@top"), content.index("@low"))
+
+    def test_fetch_tiktok_includes_first_frame_ocr_when_available(self) -> None:
+        info = {
+            "title": "Video by creator",
+            "uploader": "creator",
+            "description": "caption text",
+        }
+        result = Mock(returncode=0, stdout=json.dumps(info), stderr="")
+
+        with (
+            patch("glance.tiktok.subprocess.run", return_value=result),
+            patch(
+                "glance.tiktok.extract_first_frame_ocr",
+                return_value=OCRText("overlay words", "tesseract"),
+            ) as extract_ocr,
+            patch("glance.tiktok.extract_transcript_from_info", return_value="spoken words"),
+            patch("glance.tiktok.transcribe_url"),
+        ):
+            content = fetch_tiktok("https://www.tiktok.com/@creator/video/abc123/")
+
+        extract_ocr.assert_called_once_with("https://www.tiktok.com/@creator/video/abc123/", progress=None)
+        self.assertIn(
+            "Overlay text (first-frame OCR: tesseract):\noverlay words",
+            content,
+        )
+        self.assertLess(content.index("Caption:"), content.index("Overlay text"))
+        self.assertLess(content.index("Overlay text"), content.index("Transcript:"))
+
+    def test_fetch_tiktok_omits_first_frame_ocr_when_unavailable(self) -> None:
+        info = {
+            "title": "Video by creator",
+            "uploader": "creator",
+            "description": "caption text",
+        }
+        result = Mock(returncode=0, stdout=json.dumps(info), stderr="")
+
+        with (
+            patch("glance.tiktok.subprocess.run", return_value=result),
+            patch("glance.tiktok.extract_first_frame_ocr", return_value=None),
+            patch("glance.tiktok.extract_transcript_from_info", return_value="spoken words"),
+            patch("glance.tiktok.transcribe_url"),
+        ):
+            content = fetch_tiktok("https://www.tiktok.com/@creator/video/abc123/")
+
+        self.assertNotIn("Overlay text (first-frame OCR", content)
 
     def test_fetch_tiktok_reports_metadata_and_subtitle_progress(self) -> None:
         info = {
@@ -202,12 +303,16 @@ class TikTokFetchTests(unittest.TestCase):
 
         with (
             patch("glance.tiktok.subprocess.run", return_value=result),
+            patch("glance.tiktok.extract_first_frame_ocr", return_value=None) as extract_ocr,
             patch("glance.tiktok.extract_transcript_from_info", return_value="spoken words"),
             patch("glance.tiktok.transcribe_url") as transcribe_url,
         ):
             fetch_tiktok("https://www.tiktok.com/@creator/video/abc123/", progress=events.append)
 
         transcribe_url.assert_not_called()
+        args, kwargs = extract_ocr.call_args
+        self.assertEqual(args, ("https://www.tiktok.com/@creator/video/abc123/",))
+        self.assertIs(kwargs["progress"].__self__, events)
         self.assertEqual(
             events,
             [
@@ -226,6 +331,7 @@ class TikTokFetchTests(unittest.TestCase):
 
         with (
             patch("glance.tiktok.subprocess.run", return_value=result),
+            patch("glance.tiktok.extract_first_frame_ocr", return_value=None),
             patch("glance.tiktok.extract_transcript_from_info", return_value=None),
             patch(
                 "glance.tiktok.transcribe_url",
@@ -248,6 +354,7 @@ class TikTokFetchTests(unittest.TestCase):
 
         with (
             patch("glance.tiktok.subprocess.run", return_value=result),
+            patch("glance.tiktok.extract_first_frame_ocr", return_value=None),
             patch("glance.tiktok.extract_transcript_from_info", return_value=None),
             patch(
                 "glance.tiktok.transcribe_url",

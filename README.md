@@ -9,8 +9,8 @@ No browser tab. No autoplay. No "For You." Just the content you asked for :)
 Paste a URL → glance fetches content headlessly → an LLM summarizes and prints to the terminal.
 
 - **YouTube** — transcript via `yt-dlp`
-- **Instagram** — clip metadata/subtitles and top comments via `yt-dlp`; optional ASR fallback for missing subtitles
-- **TikTok** — clip metadata/subtitles and top comments via `yt-dlp`; optional ASR fallback for missing subtitles
+- **Instagram** — clip metadata/subtitles and top comments via `yt-dlp`; optional first-frame OCR and ASR fallback for missing subtitles
+- **TikTok** — clip metadata/subtitles and top comments via `yt-dlp`; optional first-frame OCR and ASR fallback for missing subtitles
 - **Reddit** — thread via JSON API
 - **X / Twitter** — tweet via oEmbed API
 - **Hacker News** — post + discussion via Algolia API (also fetches the linked article)
@@ -34,6 +34,14 @@ Configure in `.env` or override per-call with `--provider {anthropic,ollama}`.
 - **Anthropic** (default): set `ANTHROPIC_API_KEY` and `LLM_PROVIDER=anthropic`.
 - **Ollama** (local): set `LLM_PROVIDER=ollama`, make sure `ollama serve` is running, and pull a model (e.g. `ollama pull qwen3.5:35B-A3B`). Tune `OLLAMA_HOST` and `OLLAMA_MODEL` as needed. Tokens stream live to stderr while the local model runs.
 - **Web** (remote): set `LLM_PROVIDER=web` and `GLANCE_WEB_URL=http://<host>:8765` to delegate the LLM call to a remote glance-web instance over the network (e.g. a GPU box on your tailnet). The remote machine's own `LLM_PROVIDER` decides whether it answers via Anthropic or Ollama — invisible to the caller. Glance posts pre-fetched content to `POST /llm`, so the remote doesn't re-fetch the source URL.
+
+### First-frame OCR for Instagram/TikTok
+
+Instagram and TikTok captures automatically try to OCR visible overlay text from the first decoded video frame when `tesseract` is installed. This is optional and best effort; missing `tesseract`, still-image posts, blocked downloads, or OCR failures simply continue without an overlay-text section.
+
+```bash
+sudo apt install tesseract-ocr
+```
 
 ### ASR fallback for Instagram/TikTok
 
@@ -119,6 +127,7 @@ src/glance/
 ├── cli.py          # entry point, URL detection
 ├── youtube.py      # yt-dlp transcript extraction
 ├── asr.py          # optional IG/TikTok ASR fallback
+├── ocr.py          # optional IG/TikTok first-frame overlay OCR
 ├── instagram.py    # yt-dlp clip metadata/transcript/comments extraction
 ├── tiktok.py       # yt-dlp clip metadata/transcript/comments extraction
 ├── reddit.py       # Reddit JSON thread fetching

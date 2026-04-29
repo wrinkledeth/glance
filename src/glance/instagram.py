@@ -5,6 +5,7 @@ from html import unescape
 from typing import Any, Callable
 
 from glance.asr import transcribe_url
+from glance.ocr import extract_first_frame_ocr
 from glance.youtube import extract_transcript_from_info
 
 MAX_COMMENTS = 25
@@ -22,6 +23,10 @@ def fetch_instagram(url: str, progress: Progress | None = None) -> str:
     caption = _first_text(info, "description", "caption")
     if caption:
         parts.append(f"\nCaption:\n{caption}")
+
+    ocr_text = extract_first_frame_ocr(url, progress=progress)
+    if ocr_text:
+        parts.append(f"\nOverlay text (first-frame OCR: {ocr_text.label}):\n{ocr_text.text}")
 
     _emit(progress, "checking subtitles")
     transcript = _extract_transcript(info)

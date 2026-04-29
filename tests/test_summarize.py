@@ -18,6 +18,8 @@ class SystemPromptTests(unittest.TestCase):
         prompt = _system_prompt("instagram")
 
         self.assertIn("Instagram clips", prompt)
+        self.assertIn("first-frame OCR overlay text", prompt)
+        self.assertIn("may be noisy", prompt)
         self.assertIn("transcript", prompt)
         self.assertIn("top-comment discussion", prompt)
 
@@ -25,6 +27,8 @@ class SystemPromptTests(unittest.TestCase):
         prompt = _system_prompt("tiktok")
 
         self.assertIn("TikTok videos", prompt)
+        self.assertIn("first-frame OCR overlay text", prompt)
+        self.assertIn("may be noisy", prompt)
         self.assertIn("transcript", prompt)
         self.assertIn("do not invent spoken words or visual details", prompt)
 
