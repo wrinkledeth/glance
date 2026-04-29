@@ -2,7 +2,7 @@ import json
 import os
 import sys
 from datetime import date
-from typing import Iterator
+from typing import Callable, Iterator
 
 from dotenv import load_dotenv
 import anthropic
@@ -11,6 +11,7 @@ import httpx
 load_dotenv()
 
 ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
+Progress = Callable[[str], None]
 
 
 def _system_prompt(source_type: str) -> str:
@@ -203,7 +204,7 @@ def _stream_ollama(content: str, system: str) -> Iterator[str]:
             print(stats, file=sys.stderr, flush=True)
 
 
-def _stream_web(content: str, system: str) -> Iterator[str]:
+def _stream_web(content: str, system: str, progress: Progress | None = None) -> Iterator[str]:
     base = os.getenv("GLANCE_WEB_URL")
     if not base:
         raise RuntimeError("GLANCE_WEB_URL not set (e.g. http://moodylotus:8765)")
@@ -224,11 +225,15 @@ def _stream_web(content: str, system: str) -> Iterator[str]:
                 raise RuntimeError(obj["error"])
             if "meta" in obj:
                 meta = obj["meta"]
+                provider = meta.get("provider", "?")
+                model = meta.get("model", "?")
                 print(
-                    f"  ↳ remote: {meta.get('provider', '?')} / {meta.get('model', '?')}",
+                    f"  ↳ remote: {provider} / {model}",
                     file=sys.stderr,
                     flush=True,
                 )
+                if progress is not None:
+                    progress(f"summarizing with {provider} / {model}")
                 continue
             chunk = obj.get("chunk", "")
             if chunk:
@@ -237,7 +242,12 @@ def _stream_web(content: str, system: str) -> Iterator[str]:
                 break
 
 
-def summarize_stream(content: str, source_type: str, provider: str | None = None) -> Iterator[str]:
+def summarize_stream(
+    content: str,
+    source_type: str,
+    provider: str | None = None,
+    progress: Progress | None = None,
+) -> Iterator[str]:
     """Stream summary chunks from the configured LLM provider."""
     if provider is None:
         provider = os.getenv("LLM_PROVIDER", "anthropic")
@@ -245,11 +255,15 @@ def summarize_stream(content: str, source_type: str, provider: str | None = None
     system = _system_prompt(source_type)
 
     if provider == "anthropic":
+        if progress is not None:
+            progress(f"summarizing with anthropic / {ANTHROPIC_MODEL}")
         return _stream_anthropic(content, system)
     if provider == "ollama":
+        if progress is not None:
+            progress(f"summarizing with ollama / {os.getenv('OLLAMA_MODEL', 'qwen3.5:35B-A3B')}")
         return _stream_ollama(content, system)
     if provider == "web":
-        return _stream_web(content, system)
+        return _stream_web(content, system, progress=progress)
     raise ValueError(f"Unknown LLM provider: {provider!r} (expected 'anthropic', 'ollama', or 'web')")
 
 

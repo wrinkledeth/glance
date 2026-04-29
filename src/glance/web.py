@@ -8,7 +8,7 @@ import time
 import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Iterator
+from typing import Callable, Iterator
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
@@ -195,10 +195,21 @@ INDEX_HTML = """<!doctype html>
   }
   #status {
     flex: 1; min-width: 0;
-    font-size: 13px; opacity: 0.6; min-height: 1.2em;
-    transition: color 200ms ease;
+    font-size: 13px; color: rgba(230, 230, 230, 0.62); min-height: 1.2em;
+    line-height: 1.35; white-space: pre-wrap; cursor: pointer;
+    border-radius: 6px; transition: color 200ms ease;
   }
-  #status.error { color: #e88b8b; opacity: 0.85; }
+  #status:empty { cursor: default; }
+  #status:focus-visible { outline: 2px solid #4a8cff; outline-offset: 3px; }
+  .progress-line { display: block; }
+  .progress-line.error { color: #e88b8b; }
+  #status.collapsed .progress-line { display: none; }
+  #status.collapsed .progress-line.latest {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   #out {
     white-space: pre-wrap; word-wrap: break-word;
     background: #111114; border: 1px solid #1f1f23; border-radius: 10px;
@@ -247,7 +258,7 @@ __TOPBAR__
     </div>
   </form>
   <div class="out-head">
-    <div id="status"></div>
+    <div id="status" class="collapsed" role="button" tabindex="0" aria-expanded="false" aria-live="polite"></div>
   </div>
   <div id="out"><button id="copy" class="icon-btn" type="button" aria-label="Copy summary" title="Copy summary"><svg class="clip" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path></svg><svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12.5 L10 17.5 L19 7.5"></path></svg></button><span id="out-text"></span></div>
 </main>
@@ -264,10 +275,44 @@ __TOPBAR__
   const divider = document.getElementById('divider');
   let pollingId = null;
   const JOB_KEY = 'glance.job';
+  let progressLines = [];
+  let progressExpanded = false;
 
-  function setStatus(text, kind) {
-    status.textContent = text;
-    status.classList.toggle('error', kind === 'error');
+  function setProgressExpanded(expanded) {
+    progressExpanded = expanded;
+    status.classList.toggle('collapsed', !expanded);
+    status.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    renderProgress();
+  }
+
+  function resetProgress() {
+    progressLines = [];
+    setProgressExpanded(false);
+  }
+
+  function appendProgress(text, kind) {
+    if (!text) return;
+    progressLines.push({ text, kind: kind || 'status' });
+    renderProgress();
+  }
+
+  function latestProgressText() {
+    const latest = progressLines[progressLines.length - 1];
+    return latest ? latest.text : '';
+  }
+
+  function renderProgress() {
+    status.replaceChildren();
+    const visible = progressExpanded ? progressLines : progressLines.slice(-1);
+    const latest = progressLines[progressLines.length - 1];
+    for (const line of visible) {
+      const div = document.createElement('div');
+      div.className = 'progress-line';
+      if (line === latest) div.classList.add('latest');
+      if (line.kind === 'error') div.classList.add('error');
+      div.textContent = line.text;
+      status.appendChild(div);
+    }
   }
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -277,12 +322,13 @@ __TOPBAR__
     copy.classList.remove('show', 'ok');
   }
 
-  async function pollJob(jobId) {
+  async function pollJob(jobId, resume) {
     if (pollingId === jobId) return;
     pollingId = jobId;
     let cursor = 0;
     resetOutput();
-    setStatus('resuming…');
+    resetProgress();
+    if (resume) appendProgress('resuming');
     setBusy(true);
     try {
       while (pollingId === jobId) {
@@ -295,7 +341,7 @@ __TOPBAR__
         }
         if (resp.status === 404) {
           localStorage.removeItem(JOB_KEY);
-          setStatus('job expired', 'error');
+          appendProgress('job expired', 'error');
           break;
         }
         if (!resp.ok) {
@@ -305,18 +351,18 @@ __TOPBAR__
         const data = await resp.json();
         for (const ev of data.events) {
           if (ev.kind === 'status') {
-            setStatus(ev.data);
+            appendProgress(ev.data);
           } else if (ev.kind === 'chunk') {
             outText.textContent += ev.data;
             if (outText.textContent) copy.classList.add('show');
             window.scrollTo(0, document.body.scrollHeight);
           } else if (ev.kind === 'done') {
-            setStatus('done');
+            if (latestProgressText() !== 'done') appendProgress('done');
             if (ev.data) {
               try { history.replaceState(null, '', '/s/' + ev.data); } catch {}
             }
           } else if (ev.kind === 'error') {
-            setStatus('error: ' + ev.data, 'error');
+            appendProgress('error: ' + ev.data, 'error');
           }
         }
         cursor = data.next_cursor;
@@ -358,6 +404,18 @@ __TOPBAR__
     u.focus();
   });
 
+  status.addEventListener('click', () => {
+    if (!progressLines.length) return;
+    setProgressExpanded(!progressExpanded);
+  });
+
+  status.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (!progressLines.length) return;
+    e.preventDefault();
+    setProgressExpanded(!progressExpanded);
+  });
+
   async function copyText(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text);
@@ -384,7 +442,7 @@ __TOPBAR__
     e.preventDefault();
     pollingId = null;
     resetOutput();
-    setStatus('starting…');
+    resetProgress();
     setBusy(true);
     const url = u.value.trim();
     try {
@@ -402,7 +460,7 @@ __TOPBAR__
       localStorage.setItem(JOB_KEY, job_id);
       pollJob(job_id);
     } catch (err) {
-      setStatus('error: ' + err.message, 'error');
+      appendProgress('error: ' + err.message, 'error');
       setBusy(false);
     }
   });
@@ -420,12 +478,12 @@ __TOPBAR__
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     const jid = localStorage.getItem(JOB_KEY);
-    if (jid && pollingId !== jid) pollJob(jid);
+    if (jid && pollingId !== jid) pollJob(jid, true);
   });
 
   (() => {
     const jid = localStorage.getItem(JOB_KEY);
-    if (jid) pollJob(jid);
+    if (jid) pollJob(jid, true);
   })();
 
   copy.addEventListener('click', async () => {
@@ -470,27 +528,40 @@ def healthz() -> dict:
     return {"ok": True}
 
 
-def _fetch_content(source: str, url: str) -> str:
+Progress = Callable[[str], None]
+
+
+def _emit_progress(progress: Progress | None, message: str) -> None:
+    if progress is not None:
+        progress(message)
+
+
+def _fetch_content(source: str, url: str, progress: Progress | None = None) -> str:
     if source == "youtube":
         from glance.youtube import extract_transcript
+        _emit_progress(progress, "fetching youtube transcript with yt-dlp")
         return extract_transcript(url)
     if source == "reddit":
         from glance.reddit import fetch_thread
+        _emit_progress(progress, "fetching reddit thread")
         return fetch_thread(url)
     if source == "instagram":
         from glance.instagram import fetch_instagram
-        return fetch_instagram(url)
+        return fetch_instagram(url, progress=progress)
     if source == "tiktok":
         from glance.tiktok import fetch_tiktok
-        return fetch_tiktok(url)
+        return fetch_tiktok(url, progress=progress)
     if source == "twitter":
         from glance.twitter import fetch_tweet
+        _emit_progress(progress, "fetching tweet")
         return fetch_tweet(url)
     if source == "hn":
         from glance.hn import fetch_hn
+        _emit_progress(progress, "fetching hacker news discussion")
         return fetch_hn(url)
     if source == "article":
         from glance.article import fetch_article
+        _emit_progress(progress, "fetching article text")
         return fetch_article(url)
     raise ValueError(f"unsupported source: {source}")
 
@@ -517,20 +588,32 @@ def _sweep_jobs() -> None:
         _JOBS.pop(jid, None)
 
 
+def _append_status(job: Job, message: str) -> None:
+    job.events.append({"kind": "status", "data": message})
+
+
 def _run_job_sync(job: Job, url: str, provider: str | None) -> None:
     try:
         source = detect_source(url)
-        _, model = resolve_model(provider)
+        provider_name, model = resolve_model(provider)
+        progress = lambda message: _append_status(job, message)
 
-        job.events.append({"kind": "status", "data": f"fetching {source}…"})
-        content = _fetch_content(source, url)
-        job.events.append({"kind": "status", "data": "summarizing…"})
+        progress(f"detected {source}")
+        content = _fetch_content(source, url, progress=progress)
+        if provider_name == "web":
+            stream = summarize_stream(content, source, provider=provider_name, progress=progress)
+        else:
+            progress(f"summarizing with {provider_name} / {model}")
+            stream = summarize_stream(content, source, provider=provider_name)
         parts: list[str] = []
-        for chunk in summarize_stream(content, source, provider=provider):
+        for chunk in stream:
             parts.append(chunk)
             job.events.append({"kind": "chunk", "data": chunk})
         summary = "".join(parts)
         sid = store.put(url, source, model, summary) if summary.strip() else ""
+        if sid:
+            progress("saved")
+        progress("done")
         job.events.append({"kind": "done", "data": sid})
         job.status = "done"
     except Exception as exc:

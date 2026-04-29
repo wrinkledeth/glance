@@ -1,6 +1,8 @@
+import os
 import unittest
+from unittest.mock import patch
 
-from glance.summarize import _system_prompt
+from glance.summarize import _stream_web, _system_prompt
 
 
 class SystemPromptTests(unittest.TestCase):
@@ -25,6 +27,34 @@ class SystemPromptTests(unittest.TestCase):
         self.assertIn("TikTok videos", prompt)
         self.assertIn("transcript", prompt)
         self.assertIn("do not invent spoken words or visual details", prompt)
+
+
+class WebStreamTests(unittest.TestCase):
+    def test_stream_web_reports_remote_model_progress(self) -> None:
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def iter_lines(self):
+                yield '{"meta":{"provider":"ollama","model":"qwen-test"}}'
+                yield '{"chunk":"hello"}'
+                yield '{"done":true}'
+
+        events: list[str] = []
+        with (
+            patch.dict(os.environ, {"GLANCE_WEB_URL": "http://remote"}, clear=False),
+            patch("glance.summarize.httpx.stream", return_value=FakeResponse()),
+        ):
+            chunks = list(_stream_web("content", "system", progress=events.append))
+
+        self.assertEqual(events, ["summarizing with ollama / qwen-test"])
+        self.assertEqual(chunks, ["hello"])
 
 
 if __name__ == "__main__":

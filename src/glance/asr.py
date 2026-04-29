@@ -9,7 +9,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 DEFAULT_MODEL = "large-v3-turbo"
 DEFAULT_DEVICE = "cuda"
@@ -23,30 +23,45 @@ class ASRTranscript:
     label: str
 
 
-def transcribe_url(url: str) -> ASRTranscript | None:
+Progress = Callable[[str], None]
+
+
+def transcribe_url(url: str, progress: Progress | None = None) -> ASRTranscript | None:
     """Download clip audio, normalize it, and transcribe it if ASR is enabled."""
     if not is_enabled():
         return None
 
     started = time.monotonic()
-    print(f"→ asr / {_backend_label()}", file=sys.stderr, flush=True)
+    label = _backend_label()
+    print(f"→ asr / {label}", file=sys.stderr, flush=True)
     try:
         with tempfile.TemporaryDirectory(prefix="glance-asr-") as temp_root:
             temp_dir = Path(temp_root)
+            _emit(progress, "fetching audio with yt-dlp")
             audio_path = _download_audio(url, temp_dir)
+            _emit(progress, "normalizing audio with ffmpeg")
             wav_path = _normalize_audio(audio_path, temp_dir)
+            _emit(progress, f"transcribing with {label}")
             transcript = _transcribe_wav(wav_path)
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
         print(f"  ↳ asr failed: {exc}", file=sys.stderr, flush=True)
+        _emit(progress, "asr failed")
         return None
 
     if not transcript:
         elapsed = time.monotonic() - started
         print(f"  ↳ asr returned no transcript in {elapsed:.2f}s", file=sys.stderr, flush=True)
+        _emit(progress, "asr returned no transcript")
         return None
     elapsed = time.monotonic() - started
     print(f"  ↳ asr transcript {len(transcript)} chars in {elapsed:.2f}s", file=sys.stderr, flush=True)
-    return ASRTranscript(text=transcript, label=_backend_label())
+    _emit(progress, "asr transcript ready")
+    return ASRTranscript(text=transcript, label=label)
+
+
+def _emit(progress: Progress | None, message: str) -> None:
+    if progress is not None:
+        progress(message)
 
 
 def is_enabled() -> bool:

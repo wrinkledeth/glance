@@ -2,16 +2,18 @@ import json
 import subprocess
 from datetime import datetime, timezone
 from html import unescape
-from typing import Any
+from typing import Any, Callable
 
 from glance.asr import transcribe_url
 from glance.youtube import extract_transcript_from_info
 
 MAX_COMMENTS = 25
+Progress = Callable[[str], None]
 
 
-def fetch_instagram(url: str) -> str:
+def fetch_instagram(url: str, progress: Progress | None = None) -> str:
     """Fetch an Instagram clip and return structured text for summarization."""
+    _emit(progress, "fetching instagram metadata/comments with yt-dlp")
     info = _dump_info(url)
 
     parts: list[str] = ["Source: Instagram"]
@@ -21,11 +23,15 @@ def fetch_instagram(url: str) -> str:
     if caption:
         parts.append(f"\nCaption:\n{caption}")
 
+    _emit(progress, "checking subtitles")
     transcript = _extract_transcript(info)
     if transcript:
         parts.append(f"\nTranscript:\n{transcript}")
     else:
-        asr_transcript = transcribe_url(url)
+        if progress is None:
+            asr_transcript = transcribe_url(url)
+        else:
+            asr_transcript = transcribe_url(url, progress=progress)
         if asr_transcript:
             parts.append(f"\nTranscript (ASR: {asr_transcript.label}):\n{asr_transcript.text}")
         else:
@@ -43,6 +49,11 @@ def fetch_instagram(url: str) -> str:
         parts.append("\nComments:\n(no comments returned by yt-dlp)")
 
     return "\n".join(parts).strip()
+
+
+def _emit(progress: Progress | None, message: str) -> None:
+    if progress is not None:
+        progress(message)
 
 
 def _dump_info(url: str) -> dict[str, Any]:

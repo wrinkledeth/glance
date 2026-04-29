@@ -78,6 +78,56 @@ class ASRWorkflowTests(unittest.TestCase):
         self.assertEqual(transcript.label, "faster-whisper large-v3-turbo")
         self.assertFalse(seen["temp_dir"].exists())
 
+    def test_transcribe_url_reports_success_progress(self) -> None:
+        events: list[str] = []
+
+        def fake_download(_url: str, temp_dir: Path) -> Path:
+            audio_path = temp_dir / "source.webm"
+            audio_path.write_text("audio")
+            return audio_path
+
+        def fake_normalize(_audio_path: Path, temp_dir: Path) -> Path:
+            wav_path = temp_dir / "audio.wav"
+            wav_path.write_text("wav")
+            return wav_path
+
+        with (
+            patch.dict(os.environ, {"GLANCE_ASR_ENABLED": "1"}, clear=True),
+            patch("glance.asr._download_audio", side_effect=fake_download),
+            patch("glance.asr._normalize_audio", side_effect=fake_normalize),
+            patch("glance.asr._transcribe_wav", return_value="spoken words"),
+        ):
+            transcript = asr.transcribe_url(
+                "https://www.instagram.com/reel/abc123/",
+                progress=events.append,
+            )
+
+        self.assertIsNotNone(transcript)
+        self.assertEqual(
+            events,
+            [
+                "fetching audio with yt-dlp",
+                "normalizing audio with ffmpeg",
+                "transcribing with faster-whisper large-v3-turbo",
+                "asr transcript ready",
+            ],
+        )
+
+    def test_transcribe_url_reports_failure_progress(self) -> None:
+        events: list[str] = []
+
+        with (
+            patch.dict(os.environ, {"GLANCE_ASR_ENABLED": "1"}, clear=True),
+            patch("glance.asr._download_audio", side_effect=RuntimeError("download failed")),
+        ):
+            transcript = asr.transcribe_url(
+                "https://www.tiktok.com/@creator/video/abc123/",
+                progress=events.append,
+            )
+
+        self.assertIsNone(transcript)
+        self.assertEqual(events, ["fetching audio with yt-dlp", "asr failed"])
+
     def test_transcribe_url_returns_none_when_disabled(self) -> None:
         with (
             patch.dict(os.environ, {}, clear=True),

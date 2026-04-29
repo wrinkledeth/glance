@@ -51,6 +51,31 @@ class InstagramFetchTests(unittest.TestCase):
         self.assertIn("Top comments (3 shown of 3 reported):", content)
         self.assertLess(content.index("@top"), content.index("@low"))
 
+    def test_fetch_instagram_reports_metadata_and_subtitle_progress(self) -> None:
+        info = {
+            "title": "Video by creator",
+            "channel": "creator",
+            "description": "caption text",
+        }
+        result = Mock(returncode=0, stdout=json.dumps(info), stderr="")
+        events: list[str] = []
+
+        with (
+            patch("glance.instagram.subprocess.run", return_value=result),
+            patch("glance.instagram.extract_transcript_from_info", return_value="spoken words"),
+            patch("glance.instagram.transcribe_url") as transcribe_url,
+        ):
+            fetch_instagram("https://www.instagram.com/reel/abc123/", progress=events.append)
+
+        transcribe_url.assert_not_called()
+        self.assertEqual(
+            events,
+            [
+                "fetching instagram metadata/comments with yt-dlp",
+                "checking subtitles",
+            ],
+        )
+
     def test_fetch_instagram_uses_asr_when_subtitles_are_missing(self) -> None:
         info = {
             "title": "Video by creator",
@@ -74,6 +99,27 @@ class InstagramFetchTests(unittest.TestCase):
             "Transcript (ASR: faster-whisper large-v3-turbo):\nspoken words from asr",
             content,
         )
+
+    def test_fetch_instagram_passes_progress_to_asr(self) -> None:
+        info = {"title": "Video by creator", "channel": "creator"}
+        result = Mock(returncode=0, stdout=json.dumps(info), stderr="")
+        events: list[str] = []
+        url = "https://www.instagram.com/reel/abc123/"
+
+        with (
+            patch("glance.instagram.subprocess.run", return_value=result),
+            patch("glance.instagram.extract_transcript_from_info", return_value=None),
+            patch(
+                "glance.instagram.transcribe_url",
+                return_value=ASRTranscript("spoken words from asr", "faster-whisper large-v3-turbo"),
+            ) as transcribe_url,
+        ):
+            fetch_instagram(url, progress=events.append)
+
+        args, kwargs = transcribe_url.call_args
+        self.assertEqual(args, (url,))
+        self.assertIs(kwargs["progress"].__self__, events)
+        self.assertEqual(events[:2], ["fetching instagram metadata/comments with yt-dlp", "checking subtitles"])
 
     def test_fetch_instagram_keeps_missing_marker_when_asr_fails(self) -> None:
         info = {"title": "Video by creator", "channel": "creator"}
@@ -145,6 +191,31 @@ class TikTokFetchTests(unittest.TestCase):
         self.assertIn("Top comments (2 shown of 2 reported):", content)
         self.assertLess(content.index("@top"), content.index("@low"))
 
+    def test_fetch_tiktok_reports_metadata_and_subtitle_progress(self) -> None:
+        info = {
+            "title": "Video by creator",
+            "uploader": "creator",
+            "description": "caption text",
+        }
+        result = Mock(returncode=0, stdout=json.dumps(info), stderr="")
+        events: list[str] = []
+
+        with (
+            patch("glance.tiktok.subprocess.run", return_value=result),
+            patch("glance.tiktok.extract_transcript_from_info", return_value="spoken words"),
+            patch("glance.tiktok.transcribe_url") as transcribe_url,
+        ):
+            fetch_tiktok("https://www.tiktok.com/@creator/video/abc123/", progress=events.append)
+
+        transcribe_url.assert_not_called()
+        self.assertEqual(
+            events,
+            [
+                "fetching tiktok metadata/comments with yt-dlp",
+                "checking subtitles",
+            ],
+        )
+
     def test_fetch_tiktok_uses_asr_when_subtitles_are_missing(self) -> None:
         info = {
             "title": "Video by creator",
@@ -168,6 +239,27 @@ class TikTokFetchTests(unittest.TestCase):
             "Transcript (ASR: faster-whisper large-v3-turbo):\nspoken words from asr",
             content,
         )
+
+    def test_fetch_tiktok_passes_progress_to_asr(self) -> None:
+        info = {"title": "Video by creator", "uploader": "creator"}
+        result = Mock(returncode=0, stdout=json.dumps(info), stderr="")
+        events: list[str] = []
+        url = "https://www.tiktok.com/@creator/video/abc123/"
+
+        with (
+            patch("glance.tiktok.subprocess.run", return_value=result),
+            patch("glance.tiktok.extract_transcript_from_info", return_value=None),
+            patch(
+                "glance.tiktok.transcribe_url",
+                return_value=ASRTranscript("spoken words from asr", "faster-whisper large-v3-turbo"),
+            ) as transcribe_url,
+        ):
+            fetch_tiktok(url, progress=events.append)
+
+        args, kwargs = transcribe_url.call_args
+        self.assertEqual(args, (url,))
+        self.assertIs(kwargs["progress"].__self__, events)
+        self.assertEqual(events[:2], ["fetching tiktok metadata/comments with yt-dlp", "checking subtitles"])
 
 
 if __name__ == "__main__":
