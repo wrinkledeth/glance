@@ -19,6 +19,8 @@ def detect_source(url: str) -> str:
         return "reddit"
     elif host == "instagram.com" or host.endswith(".instagram.com"):
         return "instagram"
+    elif host == "tiktok.com" or host.endswith(".tiktok.com"):
+        return "tiktok"
     elif any(h in host for h in ("twitter.com", "x.com")):
         return "twitter"
     elif "news.ycombinator.com" in host:
@@ -30,9 +32,9 @@ def detect_source(url: str) -> str:
 def main():
     parser = argparse.ArgumentParser(
         prog="glance",
-        description="Get LLM summaries of yt, ig, reddit, x, hn, and article URLs",
+        description="Get LLM summaries of yt, ig, TikTok, reddit, x, hn, and article URLs",
     )
-    parser.add_argument("url", help="URL to summarize (yt, ig, reddit, x, hn, or any article)")
+    parser.add_argument("url", help="URL to summarize (yt, ig, TikTok, reddit, x, hn, or any article)")
     parser.add_argument(
         "--provider",
         choices=["anthropic", "ollama", "web"],
@@ -56,6 +58,9 @@ def main():
         elif source == "instagram":
             from glance.instagram import fetch_instagram
             content = fetch_instagram(args.url)
+        elif source == "tiktok":
+            from glance.tiktok import fetch_tiktok
+            content = fetch_tiktok(args.url)
         elif source == "twitter":
             from glance.twitter import fetch_tweet
             content = fetch_tweet(args.url)

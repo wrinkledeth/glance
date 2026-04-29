@@ -19,6 +19,13 @@ class SystemPromptTests(unittest.TestCase):
         self.assertIn("transcript", prompt)
         self.assertIn("top-comment discussion", prompt)
 
+    def test_tiktok_prompt_avoids_inventing_when_transcript_missing(self) -> None:
+        prompt = _system_prompt("tiktok")
+
+        self.assertIn("TikTok videos", prompt)
+        self.assertIn("transcript", prompt)
+        self.assertIn("do not invent spoken words or visual details", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()
