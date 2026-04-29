@@ -1,6 +1,6 @@
 # glance
 
-CLI (and optional tiny web app) to summarize YouTube videos, Reddit/HN threads, X posts, and articles — without exposing yourself to the algorithm.
+CLI (and optional tiny web app) to summarize yt videos, ig clips, reddit threads, x posts, hn submissions, and articles — without exposing yourself to the algorithm.
 
 No browser tab. No autoplay. No "For You." Just the content you asked for :)
 
@@ -9,6 +9,7 @@ No browser tab. No autoplay. No "For You." Just the content you asked for :)
 Paste a URL → glance fetches content headlessly → an LLM summarizes and prints to the terminal.
 
 - **YouTube** — transcript via `yt-dlp`
+- **Instagram** — clip metadata/transcript and top comments via `yt-dlp`
 - **Reddit** — thread via JSON API
 - **X / Twitter** — tweet via oEmbed API
 - **Hacker News** — post + discussion via Algolia API (also fetches the linked article)
@@ -21,7 +22,7 @@ Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 ```bash
 git clone <repo-url> && cd glance
 uv sync
-uv tool install yt-dlp        # needed for YouTube — do NOT use apt's yt-dlp, it goes stale and YouTube blocks it
+uv tool install yt-dlp        # needed for yt/ig — do NOT use apt's yt-dlp, it goes stale and sites block it
 cp .env.example .env          # configure provider (see below)
 ```
 
@@ -37,6 +38,7 @@ Configure in `.env` or override per-call with `--provider {anthropic,ollama}`.
 ```bash
 uv run glance "https://x.com/xyz/status/..."
 uv run glance --provider ollama "https://www.youtube.com/watch?v=..."
+uv run glance "https://www.instagram.com/reel/..."
 uv run glance "https://news.ycombinator.com/item?id=..."   # article + discussion
 uv run glance "https://some.blog/post"                      # generic article fallback
 ```
@@ -78,7 +80,7 @@ sudo systemctl enable --now glance-web
 systemctl status glance-web
 ```
 
-If YouTube summaries fail under systemd with `No such file or directory: 'yt-dlp'`, the service is missing the user tool directory on `PATH`. `uv tool install yt-dlp` installs to `~/.local/bin`, but systemd does not always include that directory. Add an override:
+If yt/ig summaries fail under systemd with `No such file or directory: 'yt-dlp'`, the service is missing the user tool directory on `PATH`. `uv tool install yt-dlp` installs to `~/.local/bin`, but systemd does not always include that directory. Add an override:
 
 ```bash
 sudo mkdir -p /etc/systemd/system/glance-web.service.d
@@ -97,6 +99,7 @@ Logs: `journalctl -u glance-web -f`.
 src/glance/
 ├── cli.py          # entry point, URL detection
 ├── youtube.py      # yt-dlp transcript extraction
+├── instagram.py    # yt-dlp clip metadata/transcript/comments extraction
 ├── reddit.py       # Reddit JSON thread fetching
 ├── twitter.py      # Twitter/X oEmbed fetching
 ├── hn.py           # Hacker News (Algolia API) + linked-article fetch

@@ -223,7 +223,7 @@ __TOPBAR__
   <form id="f">
     <div class="url-wrap">
       <input id="u" type="url" inputmode="url" autocapitalize="off" autocorrect="off"
-             spellcheck="false" placeholder="paste a YouTube / Reddit / X / HN / article URL" required>
+             spellcheck="false" placeholder="paste a yt / ig / reddit / x / hn / article URL" required>
       <div class="url-actions">
         <button id="ucopy" class="icon-btn" type="button" aria-label="Copy URL" title="Copy URL">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
@@ -477,6 +477,9 @@ def _fetch_content(source: str, url: str) -> str:
     if source == "reddit":
         from glance.reddit import fetch_thread
         return fetch_thread(url)
+    if source == "instagram":
+        from glance.instagram import fetch_instagram
+        return fetch_instagram(url)
     if source == "twitter":
         from glance.twitter import fetch_tweet
         return fetch_tweet(url)

@@ -12,6 +12,13 @@ class SystemPromptTests(unittest.TestCase):
         self.assertIn("the author argues", prompt)
         self.assertIn("the article says", prompt)
 
+    def test_instagram_prompt_requires_comment_discussion(self) -> None:
+        prompt = _system_prompt("instagram")
+
+        self.assertIn("Instagram clips", prompt)
+        self.assertIn("transcript", prompt)
+        self.assertIn("top-comment discussion", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

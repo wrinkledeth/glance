@@ -16,21 +16,49 @@ def extract_transcript(url: str) -> str:
 
     info = json.loads(result.stdout)
 
-    # Try manual subtitles first, then auto-generated
-    for sub_key in ("subtitles", "automatic_captions"):
-        subs = info.get(sub_key, {})
-        if "en" in subs:
-            for fmt in subs["en"]:
-                if fmt.get("ext") == "json3":
-                    return _fetch_json3_transcript(fmt["url"])
-
-    # Fallback: first available English subtitle format
-    for sub_key in ("subtitles", "automatic_captions"):
-        subs = info.get(sub_key, {})
-        if "en" in subs and subs["en"]:
-            return _fetch_vtt_transcript(subs["en"][0]["url"])
+    transcript = extract_transcript_from_info(info)
+    if transcript:
+        return transcript
 
     raise RuntimeError("No English subtitles found for this video.")
+
+
+def extract_transcript_from_info(info: dict) -> str | None:
+    """Extract English subtitle text from a yt-dlp info dict, if available."""
+    # Try manual subtitles first, then auto-generated.
+    for sub_key in ("subtitles", "automatic_captions"):
+        for fmt in _english_subtitle_formats(info.get(sub_key, {})):
+            if fmt.get("ext") == "json3" and fmt.get("url"):
+                return _fetch_json3_transcript(fmt["url"])
+
+    # Fallback: first available English subtitle format.
+    for sub_key in ("subtitles", "automatic_captions"):
+        for fmt in _english_subtitle_formats(info.get(sub_key, {})):
+            if fmt.get("url"):
+                return _fetch_vtt_transcript(fmt["url"])
+
+    return None
+
+
+def _english_subtitle_formats(subtitles: dict) -> list[dict]:
+    """Return English subtitle formats, preferring plain `en` tracks."""
+    if not isinstance(subtitles, dict):
+        return []
+
+    langs = []
+    for lang in subtitles:
+        normalized = lang.lower().replace("_", "-")
+        if normalized == "en":
+            langs.insert(0, lang)
+        elif normalized.startswith("en-"):
+            langs.append(lang)
+
+    formats: list[dict] = []
+    for lang in langs:
+        tracks = subtitles.get(lang) or []
+        if isinstance(tracks, list):
+            formats.extend(fmt for fmt in tracks if isinstance(fmt, dict))
+    return formats
 
 
 def _fetch_json3_transcript(url: str) -> str:

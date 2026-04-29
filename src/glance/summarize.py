@@ -39,6 +39,14 @@ def _system_prompt(source_type: str) -> str:
             "main threads of discussion and overall sentiment in the comments. Note "
             "if top comments disagree with the post. Keep the bullets under 300 words total."
         )
+    if source_type == "instagram":
+        return header + (
+            "You summarize Instagram clips. The input may include metadata, caption, "
+            "transcript text from yt-dlp subtitles, and top comments. Cover what the "
+            "clip says or shows, then summarize the top-comment discussion and overall "
+            "sentiment. Note if comments add context, dispute the clip, or focus on a "
+            "different takeaway. Keep the bullets under 300 words total."
+        )
     if source_type == "twitter":
         return header + (
             "You summarize tweets and X threads. Capture the claim or story, any "

@@ -1,7 +1,7 @@
 [project]
 name = "glance"
 version = "0.1.0"
-description = "Get LLM summaries of YouTube videos and Reddit threads from your terminal"
+description = "Get LLM summaries of yt, ig, reddit, x, hn, and article URLs"
 readme = "README.md"
 authors = [
     { name = "wrinkledeth", email = "wrinkled.eth@gmail.com" }
