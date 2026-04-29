@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from html import unescape
 from typing import Any
 
+from glance.asr import transcribe_url
 from glance.youtube import extract_transcript_from_info
 
 MAX_COMMENTS = 25
@@ -24,7 +25,11 @@ def fetch_instagram(url: str) -> str:
     if transcript:
         parts.append(f"\nTranscript:\n{transcript}")
     else:
-        parts.append("\nTranscript:\n(no transcript/subtitles returned by yt-dlp)")
+        asr_transcript = transcribe_url(url)
+        if asr_transcript:
+            parts.append(f"\nTranscript (ASR: {asr_transcript.label}):\n{asr_transcript.text}")
+        else:
+            parts.append("\nTranscript:\n(no transcript/subtitles returned by yt-dlp)")
 
     comments = _top_comments(info)
     reported_count = _first_int(info, "comment_count")

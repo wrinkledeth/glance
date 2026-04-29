@@ -2,6 +2,7 @@ import json
 import unittest
 from unittest.mock import Mock, patch
 
+from glance.asr import ASRTranscript
 from glance.cli import detect_source
 from glance.instagram import fetch_instagram
 from glance.tiktok import fetch_tiktok
@@ -38,15 +39,55 @@ class InstagramFetchTests(unittest.TestCase):
         with (
             patch("glance.instagram.subprocess.run", return_value=result) as run,
             patch("glance.instagram.extract_transcript_from_info", return_value="spoken words"),
+            patch("glance.instagram.transcribe_url") as transcribe_url,
         ):
             content = fetch_instagram("https://www.instagram.com/reel/abc123/")
 
         run.assert_called_once()
+        transcribe_url.assert_not_called()
         self.assertIn("Source: Instagram", content)
         self.assertIn("Caption:\ncaption text", content)
         self.assertIn("Transcript:\nspoken words", content)
         self.assertIn("Top comments (3 shown of 3 reported):", content)
         self.assertLess(content.index("@top"), content.index("@low"))
+
+    def test_fetch_instagram_uses_asr_when_subtitles_are_missing(self) -> None:
+        info = {
+            "title": "Video by creator",
+            "channel": "creator",
+            "description": "caption text",
+        }
+        result = Mock(returncode=0, stdout=json.dumps(info), stderr="")
+
+        with (
+            patch("glance.instagram.subprocess.run", return_value=result),
+            patch("glance.instagram.extract_transcript_from_info", return_value=None),
+            patch(
+                "glance.instagram.transcribe_url",
+                return_value=ASRTranscript("spoken words from asr", "faster-whisper large-v3-turbo"),
+            ) as transcribe_url,
+        ):
+            content = fetch_instagram("https://www.instagram.com/reel/abc123/")
+
+        transcribe_url.assert_called_once_with("https://www.instagram.com/reel/abc123/")
+        self.assertIn(
+            "Transcript (ASR: faster-whisper large-v3-turbo):\nspoken words from asr",
+            content,
+        )
+
+    def test_fetch_instagram_keeps_missing_marker_when_asr_fails(self) -> None:
+        info = {"title": "Video by creator", "channel": "creator"}
+        result = Mock(returncode=0, stdout=json.dumps(info), stderr="")
+
+        with (
+            patch("glance.instagram.subprocess.run", return_value=result),
+            patch("glance.instagram.extract_transcript_from_info", return_value=None),
+            patch("glance.instagram.transcribe_url", return_value=None) as transcribe_url,
+        ):
+            content = fetch_instagram("https://www.instagram.com/reel/abc123/")
+
+        transcribe_url.assert_called_once_with("https://www.instagram.com/reel/abc123/")
+        self.assertIn("Transcript:\n(no transcript/subtitles returned by yt-dlp)", content)
 
 
 class TikTokFetchTests(unittest.TestCase):
@@ -64,10 +105,12 @@ class TikTokFetchTests(unittest.TestCase):
         with (
             patch("glance.tiktok.subprocess.run", return_value=result) as run,
             patch("glance.tiktok.extract_transcript_from_info", return_value=None),
+            patch("glance.tiktok.transcribe_url", return_value=None) as transcribe_url,
         ):
             content = fetch_tiktok("https://www.tiktok.com/@creator/video/abc123/")
 
         run.assert_called_once()
+        transcribe_url.assert_called_once_with("https://www.tiktok.com/@creator/video/abc123/")
         self.assertIn("Source: TikTok", content)
         self.assertIn("Title: Mixed Doubles Strategy", content)
         self.assertIn("Author: @creator", content)
@@ -93,12 +136,38 @@ class TikTokFetchTests(unittest.TestCase):
         with (
             patch("glance.tiktok.subprocess.run", return_value=result),
             patch("glance.tiktok.extract_transcript_from_info", return_value="spoken words"),
+            patch("glance.tiktok.transcribe_url") as transcribe_url,
         ):
             content = fetch_tiktok("https://www.tiktok.com/@creator/video/abc123/")
 
+        transcribe_url.assert_not_called()
         self.assertIn("Transcript:\nspoken words", content)
         self.assertIn("Top comments (2 shown of 2 reported):", content)
         self.assertLess(content.index("@top"), content.index("@low"))
+
+    def test_fetch_tiktok_uses_asr_when_subtitles_are_missing(self) -> None:
+        info = {
+            "title": "Video by creator",
+            "uploader": "creator",
+            "description": "caption text",
+        }
+        result = Mock(returncode=0, stdout=json.dumps(info), stderr="")
+
+        with (
+            patch("glance.tiktok.subprocess.run", return_value=result),
+            patch("glance.tiktok.extract_transcript_from_info", return_value=None),
+            patch(
+                "glance.tiktok.transcribe_url",
+                return_value=ASRTranscript("spoken words from asr", "faster-whisper large-v3-turbo"),
+            ) as transcribe_url,
+        ):
+            content = fetch_tiktok("https://www.tiktok.com/@creator/video/abc123/")
+
+        transcribe_url.assert_called_once_with("https://www.tiktok.com/@creator/video/abc123/")
+        self.assertIn(
+            "Transcript (ASR: faster-whisper large-v3-turbo):\nspoken words from asr",
+            content,
+        )
 
 
 if __name__ == "__main__":
