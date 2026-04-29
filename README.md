@@ -37,11 +37,9 @@ Configure in `.env` or override per-call with `--provider {anthropic,ollama}`.
 
 ### First-frame OCR for Instagram/TikTok
 
-Instagram and TikTok captures automatically try to OCR visible overlay text from the first decoded video frame when `tesseract` is installed. This is optional and best effort; missing `tesseract`, still-image posts, blocked downloads, or OCR failures simply continue without an overlay-text section.
+Instagram and TikTok captures automatically try to OCR visible overlay text from the first decoded video frame using an Ollama vision model. This is optional and best effort; missing models, unavailable Ollama, still-image posts, blocked downloads, or OCR failures simply continue without an overlay-text section.
 
-```bash
-sudo apt install tesseract-ocr
-```
+By default this uses `GLANCE_OCR_MODEL=gemma4:e4b` and `GLANCE_OCR_HOST=$OLLAMA_HOST` or `http://localhost:11434`.
 
 ### ASR fallback for Instagram/TikTok
 

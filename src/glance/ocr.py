@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import shutil
+import base64
+import os
 import subprocess
 import sys
 import tempfile
@@ -9,8 +10,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+import httpx
+
 
 Progress = Callable[[str], None]
+DEFAULT_OCR_MODEL = "gemma4:e4b"
+DEFAULT_OCR_HOST = "http://localhost:11434"
+OCR_PROMPT = (
+    "Read all visible text in this image. Return only the exact text, preserving "
+    "wording, punctuation, capitalization, and line order. Do not describe the "
+    "image. Do not add commentary. If there is no readable text, return an empty "
+    "string."
+)
 
 
 @dataclass(frozen=True)
@@ -21,11 +32,8 @@ class OCRText:
 
 def extract_first_frame_ocr(url: str, progress: Progress | None = None) -> OCRText | None:
     """Download a video, OCR its first decoded frame, and return overlay text if available."""
-    if shutil.which("tesseract") is None:
-        _emit(progress, "first-frame OCR skipped (tesseract not found)")
-        return None
-
-    label = "tesseract"
+    model = _ocr_model()
+    label = f"ollama/{model}"
     started = time.monotonic()
     print(f"-> ocr / {label}", file=sys.stderr, flush=True)
     try:
@@ -35,9 +43,15 @@ def extract_first_frame_ocr(url: str, progress: Progress | None = None) -> OCRTe
             video_path = _download_video(url, temp_dir)
             _emit(progress, "extracting first frame with ffmpeg")
             frame_path = _extract_first_frame(video_path, temp_dir)
-            _emit(progress, "running first-frame OCR with tesseract")
-            text = _ocr_image(frame_path)
-    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+            _emit(progress, f"running first-frame OCR with {label}")
+            text = _ocr_image(frame_path, model=model)
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        subprocess.SubprocessError,
+        httpx.HTTPError,
+    ) as exc:
         print(f"  -> ocr failed: {exc}", file=sys.stderr, flush=True)
         _emit(progress, "first-frame OCR failed")
         return None
@@ -50,7 +64,7 @@ def extract_first_frame_ocr(url: str, progress: Progress | None = None) -> OCRTe
 
     elapsed = time.monotonic() - started
     print(f"  -> ocr text {len(text)} chars in {elapsed:.2f}s", file=sys.stderr, flush=True)
-    _emit(progress, "first-frame OCR ready")
+    _emit(progress, f"OCR: {text}")
     return OCRText(text=text, label=label)
 
 
@@ -112,15 +126,36 @@ def _extract_first_frame(video_path: Path, temp_dir: Path) -> Path:
     return frame_path
 
 
-def _ocr_image(frame_path: Path) -> str | None:
-    result = subprocess.run(
-        ["tesseract", str(frame_path), "stdout", "--psm", "6"],
-        capture_output=True,
-        text=True,
+def _ocr_image(frame_path: Path, *, model: str) -> str | None:
+    image = base64.b64encode(frame_path.read_bytes()).decode("ascii")
+    resp = httpx.post(
+        f"{_ocr_host().rstrip('/')}/api/generate",
+        json={
+            "model": model,
+            "prompt": OCR_PROMPT,
+            "images": [image],
+            "stream": False,
+            "think": False,
+        },
+        timeout=60.0,
     )
-    if result.returncode != 0:
-        raise RuntimeError(f"tesseract OCR failed: {result.stderr.strip()}")
-    return _clean_text(result.stdout) or None
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise ValueError("Ollama OCR response was not an object")
+    response = data.get("response")
+    if not isinstance(response, str):
+        raise ValueError("Ollama OCR response did not include text")
+    return _clean_text(response) or None
+
+
+def _ocr_model() -> str:
+    return os.environ.get("GLANCE_OCR_MODEL", DEFAULT_OCR_MODEL).strip() or DEFAULT_OCR_MODEL
+
+
+def _ocr_host() -> str:
+    host = os.environ.get("GLANCE_OCR_HOST") or os.environ.get("OLLAMA_HOST") or DEFAULT_OCR_HOST
+    return host.strip() or DEFAULT_OCR_HOST
 
 
 def _clean_text(value: str) -> str:

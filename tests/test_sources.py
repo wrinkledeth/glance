@@ -65,7 +65,7 @@ class InstagramFetchTests(unittest.TestCase):
             patch("glance.instagram.subprocess.run", return_value=result),
             patch(
                 "glance.instagram.extract_first_frame_ocr",
-                return_value=OCRText("overlay words", "tesseract"),
+                return_value=OCRText("overlay words", "ollama/gemma4:e4b"),
             ) as extract_ocr,
             patch("glance.instagram.extract_transcript_from_info", return_value="spoken words"),
             patch("glance.instagram.transcribe_url"),
@@ -74,7 +74,7 @@ class InstagramFetchTests(unittest.TestCase):
 
         extract_ocr.assert_called_once_with("https://www.instagram.com/reel/abc123/", progress=None)
         self.assertIn(
-            "Overlay text (first-frame OCR: tesseract):\noverlay words",
+            "Overlay text (first-frame OCR: ollama/gemma4:e4b):\noverlay words",
             content,
         )
         self.assertLess(content.index("Caption:"), content.index("Overlay text"))
@@ -259,7 +259,7 @@ class TikTokFetchTests(unittest.TestCase):
             patch("glance.tiktok.subprocess.run", return_value=result),
             patch(
                 "glance.tiktok.extract_first_frame_ocr",
-                return_value=OCRText("overlay words", "tesseract"),
+                return_value=OCRText("overlay words", "ollama/gemma4:e4b"),
             ) as extract_ocr,
             patch("glance.tiktok.extract_transcript_from_info", return_value="spoken words"),
             patch("glance.tiktok.transcribe_url"),
@@ -268,7 +268,7 @@ class TikTokFetchTests(unittest.TestCase):
 
         extract_ocr.assert_called_once_with("https://www.tiktok.com/@creator/video/abc123/", progress=None)
         self.assertIn(
-            "Overlay text (first-frame OCR: tesseract):\noverlay words",
+            "Overlay text (first-frame OCR: ollama/gemma4:e4b):\noverlay words",
             content,
         )
         self.assertLess(content.index("Caption:"), content.index("Overlay text"))
