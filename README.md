@@ -93,10 +93,10 @@ uv run glance-web              # binds to GLANCE_HOST:GLANCE_PORT (defaults 127.
 By default glance-web binds to localhost. To expose it on your tailnet over TLS, front it with [`tailscale serve`](https://tailscale.com/kb/1242/tailscale-serve) (no firewall holes, no `0.0.0.0`):
 
 ```bash
-tailscale serve --bg --https=8443 http://127.0.0.1:8765
+tailscale serve --bg --https=8765 http://127.0.0.1:8765
 ```
 
-Then open `https://<machine>.<tailnet>.ts.net:8443/` and **Add to Home Screen** for an app-like launcher. Tailscale's three TLS ports are `443`, `8443`, and `10000` — pick whichever isn't already taken by another service.
+Then open `https://<machine>.<tailnet>.ts.net:8765/` and **Add to Home Screen** for an app-like launcher. Keep `glance-web` bound to localhost and let Tailscale handle tailnet TLS.
 
 Generation runs as a background job on the server, decoupled from the HTTP request. The page polls for new chunks every ~400ms and stores the active job id in `localStorage`, so locking your phone, switching apps, or reloading the tab mid-generation will pick the summary back up where it left off (jobs are retained for 10 minutes after completion).
 
@@ -132,6 +132,17 @@ sudo systemctl restart glance-web
 ```
 
 Logs: `journalctl -u glance-web -f`.
+
+### Moodylotus deployment
+
+On moodylotus, this repository is source code only. Live service config is managed under `/srv/services/glance`:
+
+- Runtime env: `/srv/services/glance/.env`
+- Systemd unit source: `/srv/services/glance/glance-web.service`
+- History DB: `/srv/services/glance/data/glance.db`
+- Tailnet URL: `https://moodylotus.tailc81422.ts.net:8765`
+
+After code changes, restart the live service with `sudo systemctl restart glance-web`.
 
 ## Structure
 ```

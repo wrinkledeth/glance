@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=zen
 WorkingDirectory=/home/zen/dev/glance
-# Bind to localhost; expose to the tailnet via `tailscale serve` on :8443
+# Bind to localhost; expose to the tailnet via `tailscale serve` on :8765
 # (TLS-terminated by Tailscale). See README for the one-liner.
 Environment=GLANCE_HOST=127.0.0.1
 Environment=GLANCE_PORT=8765
