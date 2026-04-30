@@ -31,6 +31,10 @@ class SystemPromptTests(unittest.TestCase):
         self.assertIn("may be noisy", prompt)
         self.assertIn("transcript", prompt)
         self.assertIn("do not invent spoken words or visual details", prompt)
+        self.assertIn("comment-count marker without comment text", prompt)
+        self.assertIn("Do not summarize viewer discussion", prompt)
+        self.assertNotIn("top comments", prompt)
+        self.assertNotIn("top-comment discussion", prompt)
 
 
 class WebStreamTests(unittest.TestCase):

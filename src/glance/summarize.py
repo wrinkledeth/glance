@@ -55,12 +55,13 @@ def _system_prompt(source_type: str) -> str:
         return header + (
             "You summarize TikTok videos. The input may include metadata, caption, "
             "first-frame OCR overlay text, transcript text from yt-dlp subtitles or ASR, "
-            "and top comments. OCR overlay text can be useful context but may be noisy "
-            "and only reflects the first frame; do not treat it as proof of the whole "
-            "video. Cover what the video says or shows from the available evidence, then "
-            "summarize the top-comment discussion and overall sentiment if comments are "
-            "present. If no transcript is provided, do not invent spoken words or visual "
-            "details that are not supported by the caption, first-frame OCR, or metadata. "
+            "and a comment-count marker without comment text. OCR overlay text can be "
+            "useful context but may be noisy and only reflects the first frame; do not "
+            "treat it as proof of the whole video. Cover what the video says or shows "
+            "from the available evidence. Do not summarize viewer discussion or overall "
+            "comment sentiment unless actual comment text is present. If no transcript "
+            "is provided, do not invent spoken words or visual details that are not "
+            "supported by the caption, first-frame OCR, or metadata. "
             "Keep the bullets under 300 words total."
         )
     if source_type == "twitter":
