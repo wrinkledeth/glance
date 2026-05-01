@@ -697,7 +697,16 @@ SHARED_HEAD = """<meta charset="utf-8">
     display: flex; gap: 8px; align-items: baseline; font-size: 13px; opacity: 0.6;
   }
   ul.history .row1 .source { text-transform: lowercase; }
-  ul.history .title { display: block; margin: 2px 0 4px; font-size: 15px; }
+  ul.history .title-row { display: flex; align-items: center; gap: 8px; margin: 2px 0 4px; }
+  ul.history .title { flex: 1; min-width: 0; font-size: 15px; word-break: break-all; }
+  ul.history .copy-btn {
+    flex-shrink: 0; background: none; border: 0; padding: 4px;
+    color: inherit; opacity: 0.4; cursor: pointer; border-radius: 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  ul.history .copy-btn:hover { opacity: 1; background: #1f1f23; }
+  ul.history .copy-btn.copied { opacity: 1; color: #4ade80; }
+  ul.history .copy-btn svg { width: 14px; height: 14px; display: block; }
   ul.history .preview { font-size: 14px; opacity: 0.75; }
   input.search {
     width: 100%; padding: 10px 12px; font-size: 16px;
@@ -787,6 +796,8 @@ __TOPBAR__
     return s.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
+  const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
   let token = 0;
   async function load() {
     const my = ++token;
@@ -799,11 +810,25 @@ __TOPBAR__
       '<li>'
       + '<div class="row1"><span class="source">' + escapeHtml(it.source) + '</span>'
       + ' · <span>' + fmtTime(it.created_at) + '</span></div>'
-      + '<a class="title" href="/s/' + encodeURIComponent(it.id) + '">' + escapeHtml(it.url) + '</a>'
+      + '<div class="title-row">'
+      +   '<a class="title" href="/s/' + encodeURIComponent(it.id) + '">' + escapeHtml(it.url) + '</a>'
+      +   '<button class="copy-btn" type="button" data-url="' + escapeHtml(it.url) + '" aria-label="copy url" title="copy url">' + COPY_ICON + '</button>'
+      + '</div>'
       + '<div class="preview">' + escapeHtml(it.preview) + '</div>'
       + '</li>'
     )).join('') || '<li style="opacity:0.5">no summaries yet</li>';
   }
+
+  list.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.copy-btn');
+    if (!btn) return;
+    e.preventDefault();
+    try {
+      await navigator.clipboard.writeText(btn.dataset.url);
+      btn.classList.add('copied');
+      setTimeout(() => btn.classList.remove('copied'), 1000);
+    } catch {}
+  });
 
   let timer = null;
   q.addEventListener('input', () => {
