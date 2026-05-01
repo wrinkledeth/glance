@@ -540,7 +540,7 @@ def _fetch_content(source: str, url: str, progress: Progress | None = None) -> s
     if source == "youtube":
         from glance.youtube import extract_transcript
         _emit_progress(progress, "fetching youtube transcript with yt-dlp")
-        return extract_transcript(url)
+        return extract_transcript(url, progress=progress)
     if source == "reddit":
         from glance.reddit import fetch_thread
         _emit_progress(progress, "fetching reddit thread")

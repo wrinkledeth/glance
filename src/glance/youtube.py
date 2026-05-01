@@ -1,11 +1,14 @@
 import json
 import subprocess
+from typing import Callable
 
 import httpx
 
+Progress = Callable[[str], None]
 
-def extract_transcript(url: str) -> str:
-    """Extract transcript from a YouTube video using yt-dlp."""
+
+def extract_transcript(url: str, progress: Progress | None = None) -> str:
+    """Extract transcript from a YouTube video using yt-dlp, falling back to Whisper ASR."""
     result = subprocess.run(
         ["yt-dlp", "--dump-json", "--no-download", url],
         capture_output=True,
@@ -20,7 +23,19 @@ def extract_transcript(url: str) -> str:
     if transcript:
         return transcript
 
+    from glance import asr
+    if asr.is_enabled():
+        _emit(progress, "no subtitles found, transcribing audio with whisper")
+        result = asr.transcribe_url(url, progress=progress)
+        if result:
+            return result.text
+
     raise RuntimeError("No English subtitles found for this video.")
+
+
+def _emit(progress: Progress | None, message: str) -> None:
+    if progress is not None:
+        progress(message)
 
 
 def extract_transcript_from_info(info: dict) -> str | None:

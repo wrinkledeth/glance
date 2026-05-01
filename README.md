@@ -8,7 +8,7 @@ No browser tab. No autoplay. No "For You." Just the content you asked for :)
 
 Paste a URL → glance fetches content headlessly → an LLM summarizes it. The CLI prints to the terminal; the web app streams to the browser and saves history.
 
-- **YouTube** — transcript via `yt-dlp`
+- **YouTube** — transcript via `yt-dlp`; optional ASR fallback with `faster-whisper` for videos without subtitles
 - **Instagram** — clip metadata/subtitles and top comments via `yt-dlp`; optional first-frame OCR and ASR fallback for missing subtitles
 - **TikTok** — clip metadata/subtitles and top comments via `yt-dlp`; optional first-frame OCR and ASR fallback for missing subtitles
 - **Reddit** — thread via JSON API
@@ -55,12 +55,13 @@ Instagram and TikTok captures automatically try to OCR visible overlay text from
 
 By default this uses `GLANCE_OCR_MODEL=gemma4:e4b` and `GLANCE_OCR_HOST=$OLLAMA_HOST` or `http://localhost:11434`.
 
-### ASR fallback for Instagram/TikTok
+### ASR fallback for YouTube, Instagram, and TikTok
 
-For transcript text, Instagram and TikTok captures first use subtitles returned by `yt-dlp`. To locally transcribe clips when subtitles are missing, install the optional ASR dependency and enable the fallback:
+For transcript text, YouTube, Instagram, and TikTok captures first use subtitles returned by `yt-dlp`. To locally transcribe when subtitles are missing, install the optional ASR dependency and enable the fallback:
 
 ```bash
 uv sync --extra asr
+GLANCE_ASR_ENABLED=1 uv run glance "https://www.youtube.com/watch?v=..."
 GLANCE_ASR_ENABLED=1 uv run glance "https://www.instagram.com/reel/..."
 ```
 
@@ -149,7 +150,7 @@ After code changes, restart the live service with `sudo systemctl restart glance
 src/glance/
 ├── cli.py          # entry point, URL detection
 ├── youtube.py      # yt-dlp transcript extraction
-├── asr.py          # optional IG/TikTok ASR fallback
+├── asr.py          # optional ASR fallback (YouTube/IG/TikTok)
 ├── ocr.py          # optional IG/TikTok first-frame overlay OCR
 ├── instagram.py    # yt-dlp clip metadata/transcript/comments extraction
 ├── tiktok.py       # yt-dlp clip metadata/transcript/comments extraction
